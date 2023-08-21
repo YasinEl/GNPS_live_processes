@@ -7,6 +7,8 @@ TOOL_FOLDER = "$baseDir"
 
 
 process CountMS2Scans {
+    conda "$TOOL_FOLDER/requirements.yml"
+    
     input:
     path mzml_file
     val toolFolder
