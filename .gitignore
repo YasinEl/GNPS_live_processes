@@ -161,3 +161,6 @@ cython_debug/
 
 random_data/
 work/
+.nextflow.log*
+.nextflow/cache/
+.nextflow/history
