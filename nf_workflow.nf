@@ -24,8 +24,7 @@ process CountMS2Scans {
 
 
 workflow {
-
-    mzml_files = Channel.fromPath("${params.mzml_files}/*.mzML")
+    mzml_files = Channel.fromPath(params.mzml_files)
     ms2_counts = CountMS2Scans(mzml_files, TOOL_FOLDER)
 }
 
