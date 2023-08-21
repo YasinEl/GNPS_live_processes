@@ -3,12 +3,12 @@
 nextflow.enable.dsl=2
 
 params.mzml_files = ""  // Default location; you can specify a different path when you run the script
-TOOL_FOLDER = "$baseDir"
+TOOL_FOLDER = "$baseDir/bin"
 
 
 process CountMS2Scans {
     conda "$TOOL_FOLDER/requirements.yml"
-    
+
     input:
     path mzml_file
     val toolFolder
@@ -24,6 +24,7 @@ process CountMS2Scans {
 
 
 workflow {
+
     mzml_files = Channel.fromPath("${params.mzml_files}/*.mzML")
     ms2_counts = CountMS2Scans(mzml_files, TOOL_FOLDER)
 }
