@@ -8,6 +8,8 @@ TOOL_FOLDER = "$baseDir/bin"
 
 process CountMS2Scans {
     conda "$TOOL_FOLDER/requirements.yml"
+    
+    publishDir "./nf_output", mode: 'copy'
 
     input:
     path mzml_file
