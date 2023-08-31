@@ -16,11 +16,11 @@ process CountMS2Scans {
     val toolFolder
 
     output:
-    path("${mzml_file}.count"), emit: count
+    path("${mzml_file}.json"), emit: json
 
     script:
     """
-    python $toolFolder/count_ms2.py $mzml_file > ${mzml_file}.count
+    python $toolFolder/count_ms2.py $mzml_file > ${mzml_file}.json
     """
 }
 

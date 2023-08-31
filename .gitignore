@@ -160,6 +160,7 @@ cython_debug/
 #.idea/
 
 random_data/
+nf_output/
 work/
 .nextflow.log*
 .nextflow/cache/
