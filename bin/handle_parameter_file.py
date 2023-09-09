@@ -44,7 +44,7 @@ def prepare_parameter_file(file_path):
     df_samplename_set = df_params[df_params['parameters'].isin(['#STD_set_pattern', '#STD_set_skip'])]
     df_regex = create_regex(df_samplename_set)
 
-    params_dict = {'standards': df_STD,
+    params_dict = {'df_standards': df_STD,
                    'df_params': df_params,
                    'df_regex': df_regex}
     

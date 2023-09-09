@@ -25,6 +25,24 @@ process CountMS2Scans {
     """
 }
 
+process Prepare_json_for_output_collection {
+    conda "$TOOL_FOLDER/requirements.yml"
+    
+    publishDir "./nf_output", mode: 'copy'
+
+    input:
+    path mzml_file
+    val toolFolder
+
+    output:
+    path("mzml_summary.json"), emit: json
+
+    script:
+    """
+    python $toolFolder/prepare_json_for_output_collection.py $mzml_file > mzml_summary.json
+    """
+}
+
 process ApplyFeatureFinderMetabo {
     //conda 'openms'
     conda "bioconda::openms=2.9.1"
@@ -80,9 +98,10 @@ process ApplyMetaboliteAdductDecharger {
 
 workflow {
     mzml_files = Channel.fromPath(params.mzml_files)
-    ms2_counts = CountMS2Scans(mzml_files, TOOL_FOLDER)
+    //ms2_counts = CountMS2Scans(mzml_files, TOOL_FOLDER)
+    output_json = Prepare_json_for_output_collection(mzml_files, TOOL_FOLDER)
     feature_list = ApplyFeatureFinderMetabo(mzml_files)
     feature_list_w_adducts = ApplyMetaboliteAdductDecharger(feature_list, TOOL_FOLDER)
-    op = featureXML2csv(feature_list_w_adducts)
+    feature_list_csv = featureXML2csv(feature_list_w_adducts)
 }
 
