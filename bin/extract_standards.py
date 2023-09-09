@@ -24,9 +24,9 @@ def read_custom_csv(file_path):
 
     return df
 
-def find_closest_mz(mz_value, df_features):
-    lower_bound = mz_value - (5e-6 * mz_value)
-    upper_bound = mz_value + (5e-6 * mz_value)
+def find_closest_mz(mz_value, df_features, ppm):
+    lower_bound = mz_value - (ppm * 1e-6 * mz_value)
+    upper_bound = mz_value + (ppm * 1e-6 * mz_value)
     
     filtered = df_features[(df_features['mz'] >= lower_bound) & (df_features['mz'] <= upper_bound)]
     
@@ -41,6 +41,7 @@ if __name__ == "__main__":
     parameter_file_path = "/home/yasin/yasin/projects/GNPS_live_processes/random_data/parameter file.xlsx"
     feature_adducts_file_path = "/home/yasin/yasin/projects/GNPS_live_processes/nf_output/features_adducts.csv"
     name_of_mzml = 'Pool.mzML'
+    ppm = 5
 
     # Prepare parameter file
     parameter_dict = prepare_parameter_file(parameter_file_path)
@@ -65,7 +66,7 @@ if __name__ == "__main__":
 
     # For each mz in the chemical_dict, find the closest mz in df_features and update the dictionary
     for idx, mz in enumerate(chemical_dict['mz']):
-        matched = find_closest_mz(mz, df_features)
+        matched = find_closest_mz(mz, df_features, ppm = ppm)
         if matched:
             for key, value in matched.items():
                 detected_key = "detected_" + key
