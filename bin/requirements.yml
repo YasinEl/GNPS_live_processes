@@ -5,7 +5,9 @@ dependencies:
   - python>=3.7
   - pip
   - numpy
+  - pandas
   - lxml
+  - openpyxl
   - pip:
     - molmass
     - pyteomics

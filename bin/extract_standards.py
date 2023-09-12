@@ -24,7 +24,7 @@ def read_custom_csv(file_path):
 
     return df
 
-def find_closest_mz(mz_value, df_features, ppm):
+def find_closest_mz(mz_value, df_features, ppm = 5):
     lower_bound = mz_value - (ppm * 1e-6 * mz_value)
     upper_bound = mz_value + (ppm * 1e-6 * mz_value)
     
@@ -40,7 +40,7 @@ if __name__ == "__main__":
 
     parameter_file_path = "/home/yasin/yasin/projects/GNPS_live_processes/random_data/parameter file.xlsx"
     feature_adducts_file_path = "/home/yasin/yasin/projects/GNPS_live_processes/nf_output/features_adducts.csv"
-    name_of_mzml = 'Pool.mzML'
+    name_of_mzml = 'sixmix.mzML'
     ppm = 5
 
     # Prepare parameter file
@@ -61,23 +61,27 @@ if __name__ == "__main__":
     chemical_dict = df_standards.to_dict(orient='list')
     df_features = read_custom_csv(feature_adducts_file_path)
 
-    # A new dictionary to hold the results with sorted keys
-    result_dict = {key: chemical_dict[key] for key in df_standards.columns}
+    result_dict = {}
 
-    # For each mz in the chemical_dict, find the closest mz in df_features and update the dictionary
     for idx, mz in enumerate(chemical_dict['mz']):
-        matched = find_closest_mz(mz, df_features, ppm = ppm)
+        set_val = chemical_dict['set'][idx]
+        if set_val not in result_dict:
+            result_dict[set_val] = {}
+
+        input_data = {key: chemical_dict[key][idx] for key in chemical_dict.keys()}
+        
+        matched = find_closest_mz(mz, df_features)
         if matched:
-            for key, value in matched.items():
-                detected_key = "detected_" + key
-                if detected_key not in result_dict:
-                    result_dict[detected_key] = [None]*idx
-                result_dict[detected_key].append(value)
+            extracted_data = matched
+        else:
+            extracted_data = {} # or any default value you prefer if no match is found
 
-    # To ensure all lists in the dictionary have the same length, fill in None values
-    max_length = max(len(v) for v in result_dict.values())
-    for key, values in result_dict.items():
-        if len(values) < max_length:
-            result_dict[key].extend([None] * (max_length - len(values)))
+        mz_data = {
+            'input_data': input_data,
+            'extracted_data': extracted_data
+        }
 
-    print(result_dict)
+        result_dict[set_val][f"mz_{idx}"] = mz_data
+
+    import pprint
+    pprint.pprint(result_dict)

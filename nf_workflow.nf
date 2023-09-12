@@ -2,8 +2,8 @@
 
 nextflow.enable.dsl=2
 
-params.mzml_files = "/home/yasin/yasin/projects/GNPS_live_processes/random_data/Pool.mzML"
-params.parameter_file = "/home/yasin/yasin/projects/GNPS_live_processes/random_data/parameter file.xlsx"  // Default location; you can specify a different path when you run the script
+params.mzml_files = "/home/yasin/yasin/projects/GNPS_live_processes/random_data/sixmix.mzML"
+params.parameter_file = "/home/yasin/yasin/projects/GNPS_live_processes/random_data/parameter_file.xlsx"  // Default location; you can specify a different path when you run the script
 TOOL_FOLDER = "$baseDir/bin"
 
 
@@ -59,6 +59,57 @@ process ApplyFeatureFinderMetabo {
     """
 }
 
+
+process PrepareForFeatureFinderMetaboIdent {
+    conda "$TOOL_FOLDER/requirements.yml"
+
+    input:
+    path prepared_parameters
+    val toolFolder
+
+    output:
+    path("*.tsv"), emit: tsv
+
+    script:
+    """
+    python $toolFolder/PrepareForFeatureFinderMetaboIdent.py --parameter_json ${prepared_parameters}
+    """
+}
+
+process HandleParameterFile {
+    conda "$TOOL_FOLDER/requirements.yml"
+
+    input:
+    path parameter_file
+    val mzml_file
+    val toolFolder
+
+    output:
+    path("prepared_parameters.json"), emit: json
+    
+    script:
+    """
+    python $toolFolder/handle_parameter_file.py --file_path ${parameter_file} --mzml_path ${mzml_file}
+    """
+}
+
+process ApplyFeatureFinderMetaboIdent {
+    //conda 'openms'
+    conda "bioconda::openms=2.9.1"
+
+    input:
+    path mzml_file
+    path standard_set
+
+    output:
+    path("*.featureXML"), emit: featureXML
+
+    script:
+    """
+    FeatureFinderMetaboIdent -in ${mzml_file} -id ${standard_set} -out ${standard_set}.featureXML 
+    """
+}
+
 process featureXML2csv {
     //conda 'openms'
     conda "bioconda::openms=2.9.1"
@@ -97,10 +148,17 @@ process ApplyMetaboliteAdductDecharger {
 }
 
 workflow {
-    mzml_files = Channel.fromPath(params.mzml_files)
+    mzml_files = Channel.from(params.mzml_files)
+    parameter_file = Channel.from(params.parameter_file)
+    prepared_parameters = HandleParameterFile(parameter_file, mzml_files, TOOL_FOLDER)
     //ms2_counts = CountMS2Scans(mzml_files, TOOL_FOLDER)
-    output_json = Prepare_json_for_output_collection(mzml_files, TOOL_FOLDER)
-    feature_list = ApplyFeatureFinderMetabo(mzml_files)
+    output_json = Prepare_json_for_output_collection(params.mzml_files, TOOL_FOLDER)
+    openms_std_input_tables = PrepareForFeatureFinderMetaboIdent(prepared_parameters, TOOL_FOLDER)
+
+    openms_std_output = ApplyFeatureFinderMetaboIdent(mzml_files, openms_std_input_tables)
+
+
+    feature_list = ApplyFeatureFinderMetabo(params.mzml_files)
     feature_list_w_adducts = ApplyMetaboliteAdductDecharger(feature_list, TOOL_FOLDER)
     feature_list_csv = featureXML2csv(feature_list_w_adducts)
 }
