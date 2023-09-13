@@ -40,6 +40,7 @@ def create_regex(df):
 def prepare_parameter_file(file_path, mzml_path):
 
     df_STD = pd.read_excel(file_path, sheet_name='Standards per Set', usecols=range(7), engine='openpyxl')
+    df_STD = df_STD.dropna(subset=['set'])
 
     df_params = pd.read_excel(file_path, sheet_name='Filenames to Set Mapping', usecols=range(3), engine='openpyxl')
     df_params = df_params.dropna(subset=['parameters'])

@@ -19,13 +19,14 @@ if __name__ == '__main__':
     'name': 'CompoundName',
     'formula': 'SumFormula',
     'retention time [seconds]': 'RetentionTime',
-    'charge': 'Charge'
+    'charge': 'Charge',
+    'mz': 'Mass'
     }
 
     df_STD_openms = df_standards.copy()
     
     df_STD_openms.rename(columns=column_rename_map, inplace=True)
-    df_STD_openms = df_STD_openms[['set', 'CompoundName', 'SumFormula', 'Charge', 'RetentionTime']]
+    df_STD_openms = df_STD_openms[['set', 'CompoundName', 'SumFormula', 'Charge', 'RetentionTime', 'Mass']]
 
     df_STD_openms['Mass'] = 0
     df_STD_openms['RetentionTimeRange'] = 0

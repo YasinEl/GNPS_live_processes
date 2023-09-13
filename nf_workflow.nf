@@ -106,7 +106,7 @@ process ApplyFeatureFinderMetaboIdent {
 
     script:
     """
-    FeatureFinderMetaboIdent -in ${mzml_file} -id ${standard_set} -out ${standard_set}.featureXML 
+    FeatureFinderMetaboIdent -in ${mzml_file} -id ${standard_set} -out ${standard_set}.featureXML -extract:n_isotopes 4 -extract:isotope_pmin 0.7
     """
 }
 
@@ -127,6 +127,25 @@ process featureXML2csv {
     TextExporter -in ${featureXML_file} -out features_adducts.csv -feature:add_metavalues 100
     """
 }
+
+process featureXML_targeted2csv {
+    //conda 'openms'
+    conda "bioconda::openms=2.9.1"
+
+    input:
+    path featureXML_file
+
+    publishDir "./nf_output", mode: 'copy'
+
+    output:
+    path("features_targeted.csv"), emit: csv
+
+    script:
+    """
+    TextExporter -in ${featureXML_file} -out features_targeted.csv -feature:add_metavalues 100
+    """
+}
+
 
 process ApplyMetaboliteAdductDecharger {
     //conda 'openms'
@@ -161,5 +180,6 @@ workflow {
     feature_list = ApplyFeatureFinderMetabo(params.mzml_files)
     feature_list_w_adducts = ApplyMetaboliteAdductDecharger(feature_list, TOOL_FOLDER)
     feature_list_csv = featureXML2csv(feature_list_w_adducts)
+    targeted_feature_list_csv = featureXML_targeted2csv(openms_std_output)
 }
 
