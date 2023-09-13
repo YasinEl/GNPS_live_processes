@@ -99,14 +99,14 @@ process ApplyFeatureFinderMetaboIdent {
 
     input:
     path mzml_file
-    path standard_set
+    each standard_set
 
     output:
-    path("*.featureXML"), emit: featureXML
+    path("*.featureXML"), emit: featureXML, optional: true
 
     script:
     """
-    FeatureFinderMetaboIdent -in ${mzml_file} -id ${standard_set} -out ${standard_set}.featureXML -extract:n_isotopes 4 -extract:isotope_pmin 0.7
+    FeatureFinderMetaboIdent -in ${mzml_file} -id ${standard_set} -out ${standard_set.baseName}.featureXML -extract:n_isotopes 4 
     """
 }
 
@@ -138,11 +138,11 @@ process featureXML_targeted2csv {
     publishDir "./nf_output", mode: 'copy'
 
     output:
-    path("features_targeted.csv"), emit: csv
+    path("*.csv"), emit: csv
 
     script:
     """
-    TextExporter -in ${featureXML_file} -out features_targeted.csv -feature:add_metavalues 100
+    TextExporter -in ${featureXML_file} -out ${featureXML_file.baseName}.csv -feature:add_metavalues 100
     """
 }
 
@@ -166,20 +166,43 @@ process ApplyMetaboliteAdductDecharger {
     """
 }
 
+
+process Add_targeted_standard_extracts_to_output_collection {
+    conda "$TOOL_FOLDER/requirements.yml"
+    
+    publishDir "./nf_output", mode: 'copy'
+
+    input:
+    path targeted_feature_list_csv
+    path output_json
+    val toolFolder
+
+    output:
+    path("mzml_summary.json"), emit: json
+
+    script:
+    """
+    python $toolFolder/add_targeted_info_to_output_json.py --output_json_path ${output_json} --std_sets ${targeted_feature_list_csv.join(",")}
+    """
+}
+
 workflow {
+
+    //setup parameters and workflow structure
     mzml_files = Channel.from(params.mzml_files)
     parameter_file = Channel.from(params.parameter_file)
     prepared_parameters = HandleParameterFile(parameter_file, mzml_files, TOOL_FOLDER)
-    //ms2_counts = CountMS2Scans(mzml_files, TOOL_FOLDER)
     output_json = Prepare_json_for_output_collection(params.mzml_files, TOOL_FOLDER)
-    openms_std_input_tables = PrepareForFeatureFinderMetaboIdent(prepared_parameters, TOOL_FOLDER)
 
-    openms_std_output = ApplyFeatureFinderMetaboIdent(mzml_files, openms_std_input_tables)
+    //targeted standard extraction
+    PrepareForFeatureFinderMetaboIdent(prepared_parameters, TOOL_FOLDER)
+    openms_std_output = ApplyFeatureFinderMetaboIdent(mzml_files, PrepareForFeatureFinderMetaboIdent.out.tsv.collect())
+    output_json_targeted = Add_targeted_standard_extracts_to_output_collection(ApplyFeatureFinderMetaboIdent.out.featureXML.collect(), output_json, TOOL_FOLDER)
 
 
-    feature_list = ApplyFeatureFinderMetabo(params.mzml_files)
-    feature_list_w_adducts = ApplyMetaboliteAdductDecharger(feature_list, TOOL_FOLDER)
-    feature_list_csv = featureXML2csv(feature_list_w_adducts)
-    targeted_feature_list_csv = featureXML_targeted2csv(openms_std_output)
+    //feature_list = ApplyFeatureFinderMetabo(params.mzml_files)
+    //feature_list_w_adducts = ApplyMetaboliteAdductDecharger(feature_list, TOOL_FOLDER)
+    //feature_list_csv = featureXML2csv(feature_list_w_adducts)
+    
 }
 

@@ -6,6 +6,7 @@ dependencies:
   - pip
   - numpy
   - lxml
+  - xmltodict
   - pip:
     - molmass
     - pyteomics

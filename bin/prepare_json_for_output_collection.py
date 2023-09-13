@@ -14,6 +14,8 @@ def main():
     base_name = os.path.basename(args.filename)
     
     output_data = {'mzml_name': base_name}
+    output_data['metrics'] = []
+    
     write_json_to_stdout(output_data)
 
 if __name__ == "__main__":
