@@ -2,30 +2,40 @@
 
 nextflow.enable.dsl=2
 
-params.mzml_files = "/home/yasin/yasin/projects/GNPS_live_processes/random_data/sixmix.mzML"
+params.json_directory = "/home/yasin/yasin/projects/GNPS_live_processes/nf_output"
 params.parameter_file = "/home/yasin/yasin/projects/GNPS_live_processes/random_data/parameter_file.xlsx" 
 TOOL_FOLDER = "$baseDir/bin"
 
 
-// take folder with all jsons and aggreagte then into a single table
-// make a different table for each set or make groupable by set
+// take folder with all jsons and aggreagte then into a single table OR
+// make a different table for each set or make groupable by set (for STD plots)
 // 
 
 
-process aggregate_jsons {
+process aggregateJsonsToTable {
     conda "$TOOL_FOLDER/requirements.yml"
     
     publishDir "./nf_output", mode: 'copy'
 
     input:
-    path mzml_file
+    path json_directory
     val toolFolder
 
     output:
-    path("mzml_summary.json"), emit: json
+    path("all_jsons_table.csv"), emit: csv
 
     script:
     """
-    python $toolFolder/count_ms2.py $mzml_file > mzml_summary.json
+    python $toolFolder/aggregateJsonsToStandardTable.py --json_directory ${json_directory}
     """
+}
+
+
+workflow {
+
+    json_directory = Channel.from(params.json_directory)
+    all_jsons_table = aggregateJsonsToTable(json_directory, TOOL_FOLDER)
+
+
+
 }
