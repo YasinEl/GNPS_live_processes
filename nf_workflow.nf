@@ -3,7 +3,7 @@
 nextflow.enable.dsl=2
 
 params.mzml_files = "/home/yasin/yasin/projects/GNPS_live_processes/random_data/sixmix.mzML"
-params.parameter_file = "/home/yasin/yasin/projects/GNPS_live_processes/random_data/parameter_file.xlsx"  // Default location; you can specify a different path when you run the script
+params.parameter_file = "/home/yasin/yasin/projects/GNPS_live_processes/random_data/parameter_file.xlsx" 
 TOOL_FOLDER = "$baseDir/bin"
 
 

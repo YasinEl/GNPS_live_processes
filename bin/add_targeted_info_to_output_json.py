@@ -43,19 +43,26 @@ if __name__ == "__main__":
     std_sets = args.std_sets.split(",")
 
     for csv_path in std_sets:
-
+        
         #construct df from xml
         with open(csv_path, 'r') as file:
             content = file.read()
             data = xmltodict.parse(content)
 
         features = data['featureMap']['featureList']['feature']
+        
         rows = []
 
-        for feature in features:
-            user_params = feature['UserParam'] + feature['subordinate']['feature'][0]['UserParam']
+        if int(data['featureMap']['featureList']['@count']) > 1:
+            for feature in features:
+                user_params = feature['UserParam'] + feature['subordinate']['feature'][0]['UserParam']
+                row_data = {item['@name']: item['@value'] for item in user_params}
+                rows.append(row_data)
+        elif int(data['featureMap']['featureList']['@count']) == 1:
+            user_params = features['UserParam'] + features['subordinate']['feature'][0]['UserParam']
             row_data = {item['@name']: item['@value'] for item in user_params}
             rows.append(row_data)
+
 
         df = pd.DataFrame(rows)
 
@@ -66,14 +73,14 @@ if __name__ == "__main__":
         # For each row in the dataframe
         for _, row in df.iterrows():
             metric = {
-                "name": row["label"],
+                "name": str(row["label"]),
                 "type": "standards",
                 "collection": collection_name,
                 "reports": {
-                    "MZ": row['MZ'],
-                    "RT": row['peak_apex_position'],
-                    "Height": row['peak_apex_int'],
-                    "FWHM": row['width_at_50']
+                    "MZ": float(row['MZ']),
+                    "RT": float(row['peak_apex_position']),
+                    "Height": float(row['peak_apex_int']),
+                    "FWHM": float(row['width_at_50'])
                 }
             }
             output_json['metrics'].append(metric)
