@@ -25,6 +25,25 @@ process CountMS2Scans {
     """
 }
 
+
+process CreateMS2Inventory {
+    conda "$TOOL_FOLDER/requirements.yml"
+    //conda "bioconda::openms=2.9.1"
+
+    input:
+    path mzml_file
+    val toolFolder
+
+    output:
+    path("MS2_inventory_table.csv"), emit: csv
+
+    script:
+    """
+    python $toolFolder/createMS2table.py --file_path ${mzml_file} 
+    """
+}
+
+
 process Prepare_json_for_output_collection {
     conda "$TOOL_FOLDER/requirements.yml"
     
@@ -199,6 +218,8 @@ workflow {
     openms_std_output = ApplyFeatureFinderMetaboIdent(mzml_files, PrepareForFeatureFinderMetaboIdent.out.tsv.collect())
     output_json_targeted = Add_targeted_standard_extracts_to_output_collection(ApplyFeatureFinderMetaboIdent.out.featureXML.collect(), output_json, TOOL_FOLDER)
 
+    //general assessments
+    CreateMS2Inventory(mzml_files, TOOL_FOLDER)
 
     //feature_list = ApplyFeatureFinderMetabo(params.mzml_files)
     //feature_list_w_adducts = ApplyMetaboliteAdductDecharger(feature_list, TOOL_FOLDER)

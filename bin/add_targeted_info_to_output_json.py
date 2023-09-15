@@ -52,16 +52,38 @@ if __name__ == "__main__":
         features = data['featureMap']['featureList']['feature']
         
         rows = []
+        eics = []
 
         if int(data['featureMap']['featureList']['@count']) > 1:
             for feature in features:
+                #collect_single_value_data
                 user_params = feature['UserParam'] + feature['subordinate']['feature'][0]['UserParam']
                 row_data = {item['@name']: item['@value'] for item in user_params}
                 rows.append(row_data)
+
+                #collect EICs
+                eic_data = feature['subordinate']['feature'][0]['convexhull']["pt"]
+
+                eic_data_prep = {
+                    "rt": [float(item["@x"]) for item in eic_data],
+                    "intensity": [float(item["@y"]) for item in eic_data]
+                    }
+                eics.append(eic_data_prep)
+
+
         elif int(data['featureMap']['featureList']['@count']) == 1:
             user_params = features['UserParam'] + features['subordinate']['feature'][0]['UserParam']
             row_data = {item['@name']: item['@value'] for item in user_params}
             rows.append(row_data)
+
+            #collect EICs
+            eic_data = features['subordinate']['feature'][0]['convexhull']["pt"]
+
+            eic_data_prep = {
+                "rt": [float(item["@x"]) for item in eic_data],
+                "intensity": [float(item["@y"]) for item in eic_data]
+                }
+            eics.append(eic_data_prep)
 
 
         df = pd.DataFrame(rows)
@@ -71,7 +93,7 @@ if __name__ == "__main__":
         collection_name = os.path.splitext(os.path.basename(csv_path))[0]
 
         # For each row in the dataframe
-        for _, row in df.iterrows():
+        for idx, row in df.iterrows():
             metric = {
                 "name": str(row["label"]),
                 "type": "standards",
@@ -80,7 +102,8 @@ if __name__ == "__main__":
                     "MZ": float(row['MZ']),
                     "RT": float(row['peak_apex_position']),
                     "Height": float(row['peak_apex_int']),
-                    "FWHM": float(row['width_at_50'])
+                    "FWHM": float(row['width_at_50']),
+                    "EIC": eics[idx]
                 }
             }
             output_json['metrics'].append(metric)

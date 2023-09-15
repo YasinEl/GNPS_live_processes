@@ -29,7 +29,8 @@ if __name__ == "__main__":
                         "type": metric["type"],
                         "collection": metric["collection"],
                     }
-                    data_dict.update(metric["reports"])
+                    data_dict.update({k: v for k, v in metric["reports"].items() if not isinstance(v, (dict, list))})
+
                     data_list.append(data_dict)
 
     # Convert data_list into a pandas DataFrame
