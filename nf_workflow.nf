@@ -32,6 +32,7 @@ process CreateMS2Inventory {
 
     input:
     path mzml_file
+    path featureXML
     val toolFolder
 
     output:
@@ -39,7 +40,7 @@ process CreateMS2Inventory {
 
     script:
     """
-    python $toolFolder/createMS2table.py --file_path ${mzml_file} 
+    python $toolFolder/createMS2table.py --file_path ${mzml_file} --featureXML_path ${featureXML}
     """
 }
 
@@ -74,7 +75,7 @@ process ApplyFeatureFinderMetabo {
 
     script:
     """
-    FeatureFinderMetabo -in ${mzml_file} -out features.featureXML -algorithm:epd:width_filtering "auto" -algorithm:ffm:report_convex_hulls true -algorithm:mtd:mass_error_ppm 10 -algorithm:common:noise_threshold_int 10000 -algorithm:ffm:remove_single_traces true
+    FeatureFinderMetabo -in ${mzml_file} -out features.featureXML -algorithm:epd:width_filtering "auto" -threads 10 -algorithm:ffm:report_convex_hulls true -algorithm:mtd:mass_error_ppm 10 -algorithm:common:noise_threshold_int 1000 -algorithm:ffm:remove_single_traces true
     """
 }
 
@@ -125,7 +126,7 @@ process ApplyFeatureFinderMetaboIdent {
 
     script:
     """
-    FeatureFinderMetaboIdent -in ${mzml_file} -id ${standard_set} -out ${standard_set.baseName}.featureXML -extract:n_isotopes 4 
+    FeatureFinderMetaboIdent -in ${mzml_file} -id ${standard_set} -out ${standard_set.baseName}.featureXML -threads 5 -extract:n_isotopes 2
     """
 }
 
@@ -143,7 +144,7 @@ process featureXML2csv {
 
     script:
     """
-    TextExporter -in ${featureXML_file} -out features_adducts.csv -feature:add_metavalues 100
+    TextExporter -in ${featureXML_file} -out features_adducts.csv -feature:add_metavalues 0
     """
 }
 
@@ -181,15 +182,13 @@ process ApplyMetaboliteAdductDecharger {
 
     script:
     """
-    MetaboliteAdductDecharger -in ${featureXML_file} -out_fm feature_adducts.featureXML 
+    MetaboliteAdductDecharger -in ${featureXML_file} -out_fm feature_adducts.featureXML -threads 5 -algorithm:MetaboliteFeatureDeconvolution:max_neutrals 3
     """
 }
 
 
 process Add_targeted_standard_extracts_to_output_collection {
     conda "$TOOL_FOLDER/requirements.yml"
-    
-    publishDir "./nf_output", mode: 'copy'
 
     input:
     path targeted_feature_list_csv
@@ -205,6 +204,64 @@ process Add_targeted_standard_extracts_to_output_collection {
     """
 }
 
+process Add_MS2_info_to_output_collection {
+    conda "$TOOL_FOLDER/requirements.yml"
+    
+    publishDir "./nf_output", mode: 'copy'
+
+    input:
+    path output_json
+    path MS2_table
+    val toolFolder
+
+    output:
+    path("mzml_summary.json"), emit: json
+
+    script:
+    """
+    python $toolFolder/add_MS2_info_to_output_json.py --output_json_path ${output_json} --ms2_inv_csv ${MS2_table}
+    """
+}
+
+process CreateMS1Inventory {
+    conda "$TOOL_FOLDER/requirements.yml"
+    //conda "bioconda::openms=2.9.1"
+
+    input:
+    path mzml_file
+    val toolFolder
+
+    output:
+    path("MS1_inventory_table.csv"), emit: csv
+
+    script:
+    """
+    python $toolFolder/createMS1table.py --file_path ${mzml_file} 
+    """
+}
+
+
+process Add_MS1_info_to_output_collection {
+    conda "$TOOL_FOLDER/requirements.yml"
+    
+    publishDir "./nf_output", mode: 'copy'
+
+    input:
+    path output_json
+    path MS2_table
+    val toolFolder
+
+    output:
+    path("mzml_summary.json"), emit: json
+
+    script:
+    """
+    python $toolFolder/add_MS1_info_to_output_json.py --output_json_path ${output_json} --ms1_inv_csv ${MS2_table}
+    """
+}
+
+
+
 workflow {
 
     //setup parameters and workflow structure
@@ -218,12 +275,19 @@ workflow {
     openms_std_output = ApplyFeatureFinderMetaboIdent(mzml_files, PrepareForFeatureFinderMetaboIdent.out.tsv.collect())
     output_json_targeted = Add_targeted_standard_extracts_to_output_collection(ApplyFeatureFinderMetaboIdent.out.featureXML.collect(), output_json, TOOL_FOLDER)
 
-    //general assessments
-    CreateMS2Inventory(mzml_files, TOOL_FOLDER)
 
-    //feature_list = ApplyFeatureFinderMetabo(params.mzml_files)
-    //feature_list_w_adducts = ApplyMetaboliteAdductDecharger(feature_list, TOOL_FOLDER)
-    //feature_list_csv = featureXML2csv(feature_list_w_adducts)
+    feature_list = ApplyFeatureFinderMetabo(params.mzml_files)
+    feature_list_w_adducts = ApplyMetaboliteAdductDecharger(feature_list, TOOL_FOLDER)
+    feature_list_csv = featureXML2csv(feature_list_w_adducts)
+    
+    //general assessments
+    MS2_inventory = CreateMS2Inventory(mzml_files, feature_list_w_adducts, TOOL_FOLDER)
+    output_json_ms2 = Add_MS2_info_to_output_collection(output_json_targeted, MS2_inventory, TOOL_FOLDER)
+
+
+    MS1_inventory = CreateMS1Inventory(mzml_files, TOOL_FOLDER)
+    output_json_ms1 = Add_MS1_info_to_output_collection(output_json_ms2, MS1_inventory, TOOL_FOLDER)
+
     
 }
 

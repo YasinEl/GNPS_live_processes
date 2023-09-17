@@ -27,8 +27,8 @@ def read_custom_csv(file_path):
 if __name__ == "__main__":
 
     parser = argparse.ArgumentParser(description="Add output of targeted OpenMS analysis to json.")
-    parser.add_argument('--output_json_path', type=str, help="Path to the mzML file.")
-    parser.add_argument('--std_sets', type=str, help="Paths to std_set csv files.")
+    parser.add_argument('--output_json_path', type=str, help="Path to the json file.")
+    parser.add_argument('--std_sets', type=str, help="Paths to std_set featureXML files.")
     
     args = parser.parse_args()
 
