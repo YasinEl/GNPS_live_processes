@@ -75,7 +75,7 @@ process ApplyFeatureFinderMetabo {
 
     script:
     """
-    FeatureFinderMetabo -in ${mzml_file} -out features.featureXML -algorithm:epd:width_filtering "auto" -threads 10 -algorithm:ffm:report_convex_hulls true -algorithm:mtd:mass_error_ppm 10 -algorithm:common:noise_threshold_int 1000 -algorithm:ffm:remove_single_traces true
+    FeatureFinderMetabo -in ${mzml_file} -out features.featureXML -algorithm:epd:width_filtering "auto" -threads 10 -algorithm:ffm:report_convex_hulls true  -algorithm:ffm:use_smoothed_intensities false -algorithm:mtd:mass_error_ppm 10 -algorithm:common:noise_threshold_int 1000 -algorithm:ffm:remove_single_traces true -algorithm:mtd:quant_method max_height
     """
 }
 

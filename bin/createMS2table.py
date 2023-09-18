@@ -1,6 +1,7 @@
 import pyopenms as oms
 import pandas as pd
 import argparse
+from bisect import bisect_left, bisect_right
 
 def filter_values(values, factor=3):
     min_val = min(values)
@@ -43,40 +44,52 @@ def add_unique_mz_col(df, ppm_val=10):
     df['Group'] = groups
     return df 
 
+# Pre-sort the features by their m/z value
+def preprocess_features(feature_map):
+    sorted_features = sorted([(feature.getMZ(), feature) for feature in feature_map])
+    
+    # Create time bins for features
+    time_bins = {}
+    for feature in feature_map:
+        rt_feature = feature.getRT() / 60.0  # Convert to minutes
+        bin_id = int(rt_feature // 1)  # 1 minute bins
+        if bin_id not in time_bins:
+            time_bins[bin_id] = []
+        time_bins[bin_id].append(feature)
+    
+    return sorted_features, time_bins
+
 if __name__ == '__main__':
-        
+    # Argument parsing (no change here)
     parser = argparse.ArgumentParser(description="Create inventory table for MS2 scans.")
     parser.add_argument('--file_path', type=str, help="Path to the mzML file.")
     parser.add_argument('--featureXML_path', type=str, help="Path to the featureXML file.")
-    
     args = parser.parse_args()
-
     file_path = args.file_path
     featureXML_path = args.featureXML_path
 
-    # Load featureXML
+    # Load data 
     feature_map = oms.FeatureMap()
     oms.FeatureXMLFile().load(featureXML_path, feature_map)
-
-    # Initialize the run instance
     exp = oms.MSExperiment()
     oms.MzMLFile().load(file_path, exp)
 
-    # Create a list to hold spectra
+    # Pre-process features
+    sorted_features, time_bins = preprocess_features(feature_map)
+    
     data = []
-
     prev_MS1_spectrum = None
+    
     for spectrum in exp:
         if spectrum.getMSLevel() == 1:
             prev_MS1_spectrum = spectrum
 
-        elif spectrum.getMSLevel() > 1 and prev_MS1_spectrum:
+        elif spectrum.getMSLevel() == 2 and prev_MS1_spectrum:
 
             ms_level = spectrum.getMSLevel()
-            rt = spectrum.getRT() / 60.0  # Convert to minutes
+            rt = spectrum.getRT() /60
             precursor = spectrum.getPrecursors()[0]
             precursor_mz = precursor.getMZ()
-            precursor_int = precursor.getIntensity()
             precursor_charge = precursor.getCharge()
 
             mzs, ints = spectrum.get_peaks()
@@ -96,15 +109,39 @@ if __name__ == '__main__':
             lower_offset = precursor.getIsolationWindowLowerOffset()
             higher_offset = precursor.getIsolationWindowUpperOffset()
             precursor_mzs, precursor_ints = prev_MS1_spectrum.get_peaks()
-            isolated_mzs = [mz for mz in precursor_mzs if (precursor_mz - lower_offset) <= mz <= (precursor_mz + higher_offset)]
-            isolated_ints = [intensity for mz, intensity in zip(precursor_mzs, precursor_ints) if (precursor_mz - lower_offset) <= mz <= (precursor_mz + higher_offset)]
+            isolated_ints = []
+            isolated_mzs = []
+            total_intensity = 0
+            precursor_int = 0  # Initialize as 0, if no value meets the condition, it will remain 0
+
+            for mz, intensity in zip(precursor_mzs, precursor_ints):
+                if (precursor_mz - lower_offset) <= mz <= (precursor_mz + higher_offset):
+                    isolated_ints.append(intensity)
+                    isolated_mzs.append(mz)
+                    if is_within_ppm(mz, precursor_mz, 15):
+                        precursor_int = float(intensity)  # Assuming that only one mz will meet this condition
+
+
             total_intensity = sum(isolated_ints)
-            purity = precursor_int / total_intensity if total_intensity else 0
+            purity = precursor_int / total_intensity if total_intensity > 0 else None
 
             associated_feature_label = "N/A"
             temporal_distance_score = None
+            apex_intensity_2 = None
+            prec_apex_ratio = None
 
-            for feature in feature_map:
+            # Find the relevant time bins to search in
+            relevant_bin_ids = [int((rt // 1) + i) for i in range(-1, 2)]  # Search in neighboring bins as well
+            relevant_features = [feature for bin_id in relevant_bin_ids for feature in time_bins.get(bin_id, [])]
+            
+            # Perform binary search on the sorted features
+            low = bisect_left(sorted_features, (precursor_mz - precursor_mz * 15e-6, None))
+            high = bisect_right(sorted_features, (precursor_mz + precursor_mz * 15e-6, None))
+            candidates = [feature for mz, feature in sorted_features[low:high]]
+            
+            # Only loop through the features that are both in the time bin and m/z range
+            for feature in [x for x in candidates if x in relevant_features]:
+
                 mz_feature = feature.getMZ()
                 rt_feature = feature.getRT() / 60.0 
 
@@ -123,16 +160,23 @@ if __name__ == '__main__':
                     associated_feature_label = feature.getUniqueId()
 
                     apex_intensity = feature.getMetaValue("max_height")
+                    feature_FWHM = feature.getMetaValue("FWHM")
+
+                    
                     #apex_intensity = feature.getIntensity()
 
                     # Calculate the temporal distance score
-                    feature_duration = end_time_feature - start_time_feature
-                    temporal_distance_score = (rt - rt_feature) / feature_duration if feature_duration else 0
+                    #feature_duration = end_time_feature - start_time_feature
+                    #temporal_distance_score = (rt - rt_feature) / feature_duration if feature_duration else 0
+                    temporal_distance_score = (rt - rt_feature) * 60
+                    prec_apex_ratio = precursor_int/apex_intensity
                     break
 
-            data.append([ms_level, rt, precursor_mz, precursor_charge, max_fragment_intensity, precursor_int, purity, peaks_count, peaks_count_filtered, associated_feature_label, apex_intensity, temporal_distance_score])
 
-    df = pd.DataFrame(data, columns=['MS Level', 'Retention Time (min)', 'Precursor m/z', 'Precursor charge', 'Max fragment intensity', 'Precursor intensity', 'Purity', 'Peak count', 'Peak count (filtered)', 'Associated Feature Label', 'Feature Apex intensity', 'Rel Feature Apex distance'])
+
+            data.append([ms_level, rt, precursor_mz, precursor_charge, max_fragment_intensity, precursor_int, purity, peaks_count, peaks_count_filtered, associated_feature_label, apex_intensity, feature_FWHM, temporal_distance_score, prec_apex_ratio])
+
+    df = pd.DataFrame(data, columns=['MS Level', 'Retention Time (min)', 'Precursor m/z', 'Precursor charge', 'Max fragment intensity', 'Precursor intensity', 'Purity', 'Peak count', 'Peak count (filtered)', 'Associated Feature Label', 'Feature Apex intensity', 'FWHM', 'Rel Feature Apex distance', 'Prec-Apex intensity ratio'])
 
     df = add_unique_mz_col(df)
     
