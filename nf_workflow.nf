@@ -4,6 +4,8 @@ nextflow.enable.dsl=2
 
 params.mzml_files = "/home/yasin/yasin/projects/GNPS_live_processes/random_data/sixmix.mzML"
 params.parameter_file = "/home/yasin/yasin/projects/GNPS_live_processes/random_data/parameter_file.xlsx" 
+params.MS1ppm = 50
+params.MS2ppm = 50
 TOOL_FOLDER = "$baseDir/bin"
 
 
@@ -40,7 +42,7 @@ process CreateMS2Inventory {
 
     script:
     """
-    python $toolFolder/createMS2table.py --file_path ${mzml_file} --featureXML_path ${featureXML}
+    python $toolFolder/createMS2table.py --file_path ${mzml_file} --featureXML_path ${featureXML} --ppm ${params.MS2ppm}
     """
 }
 
@@ -75,7 +77,11 @@ process ApplyFeatureFinderMetabo {
 
     script:
     """
-    FeatureFinderMetabo -in ${mzml_file} -out features.featureXML -algorithm:epd:width_filtering "auto" -threads 10 -algorithm:ffm:report_convex_hulls true  -algorithm:ffm:use_smoothed_intensities false -algorithm:mtd:mass_error_ppm 10 -algorithm:common:noise_threshold_int 1000 -algorithm:ffm:remove_single_traces true -algorithm:mtd:quant_method max_height
+    FeatureFinderMetabo -in ${mzml_file} -out features.featureXML -algorithm:epd:width_filtering off -threads 10 \
+    -algorithm:ffm:report_convex_hulls true  -algorithm:ffm:mz_scoring_by_elements true -algorithm:ffm:elements CHNOPSClNaKFBr \
+    -algorithm:common:chrom_fwhm 2 -algorithm:ffm:use_smoothed_intensities false -algorithm:mtd:mass_error_ppm ${params.MS1ppm} \
+    -algorithm:common:noise_threshold_int 1000 -algorithm:ffm:remove_single_traces true -algorithm:mtd:quant_method max_height \
+    -algorithm:mtd:min_trace_length 2 -algorithm:ffm:charge_upper_bound 20
     """
 }
 
@@ -191,7 +197,8 @@ process Add_targeted_standard_extracts_to_output_collection {
     conda "$TOOL_FOLDER/requirements.yml"
 
     input:
-    path targeted_feature_list_csv
+    path targeted_feature_list_featurexml
+    path targeted_feature_list_tsv
     path output_json
     val toolFolder
 
@@ -200,7 +207,8 @@ process Add_targeted_standard_extracts_to_output_collection {
 
     script:
     """
-    python $toolFolder/add_targeted_info_to_output_json.py --output_json_path ${output_json} --std_sets ${targeted_feature_list_csv.join(",")}
+    python $toolFolder/add_targeted_info_to_output_json.py --output_json_path ${output_json} --std_sets ${targeted_feature_list_featurexml.join(",")} \
+    --std_sets_tsvs ${targeted_feature_list_tsv.join(",")}
     """
 }
 
@@ -273,8 +281,7 @@ workflow {
     //targeted standard extraction
     PrepareForFeatureFinderMetaboIdent(prepared_parameters, TOOL_FOLDER)
     openms_std_output = ApplyFeatureFinderMetaboIdent(mzml_files, PrepareForFeatureFinderMetaboIdent.out.tsv.collect())
-    output_json_targeted = Add_targeted_standard_extracts_to_output_collection(ApplyFeatureFinderMetaboIdent.out.featureXML.collect(), output_json, TOOL_FOLDER)
-
+    output_json_targeted = Add_targeted_standard_extracts_to_output_collection(ApplyFeatureFinderMetaboIdent.out.featureXML.collect(), PrepareForFeatureFinderMetaboIdent.out.tsv.collect(), output_json, TOOL_FOLDER)
 
     feature_list = ApplyFeatureFinderMetabo(params.mzml_files)
     feature_list_w_adducts = ApplyMetaboliteAdductDecharger(feature_list, TOOL_FOLDER)

@@ -1,23 +1,14 @@
 
+from pyopenms import MSExperiment, MzMLFile
 
+# Load the mzML file into an MSExperiment object
+filename = "/home/yasin/yasin/projects/GNPS_live_processes/random_data/sixmix.mzML"
+exp = MSExperiment()
+MzMLFile().load(filename, exp)
 
-
-
-import pyopenms as oms
-
-def calculate_tic(file_path):
-    # Initialize the MSExperiment instance
-    exp = oms.MSExperiment()
-    oms.MzMLFile().load(file_path, exp)
-    
-    # Calculate TIC for each spectrum and store in a list
-    tic_values = [spectrum.calculateTIC() for spectrum in exp]
-
-    return tic_values
-
-
-
-mzml_path = "/home/yasin/yasin/projects/GNPS_live_processes/random_data/sixmix.mzML"
-
-tics = calculate_tic(mzml_path)
-print(tics)
+# Loop through spectra to find MS2 scans
+for spectrum in exp:
+    if spectrum.getMSLevel() == 2:
+        precursors = spectrum.getPrecursors()
+        collision_energy = precursors[0].getMetaValue(b'collision energy')
+        print(f"Collision Energy: {collision_energy}")
