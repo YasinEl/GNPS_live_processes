@@ -23,11 +23,11 @@ if __name__ == "__main__":
         "type": "MS2_inventory",
         "collection": "MS2_inventory",
         "reports": {
-            "MS2_spectra": len(df_MS2),
-            "Unique_prec_MZ": int(df_MS2['Group'].nunique()),
-            "Median_Peak_count": int(df_MS2['Peak count'].median()),
-            "Median_filtered_Peak_count": int(df_MS2['Peak count (filtered)'].median()),
-            "Median_precuror_purity": df_MS2['Purity'].median(),
+            "MS2_spectra": len(df_MS2['MS Level'].dropna()),
+            "Unique_prec_MZ": int(df_MS2['Group'].dropna().nunique()),
+            "Median_Peak_count": int(df_MS2['Peak count'].dropna().median()),
+            "Median_filtered_Peak_count": int(df_MS2['Peak count (filtered)'].dropna().median()),
+            "Median_precuror_purity": df_MS2['Purity'].dropna().median(),
             "MS2_inventory": df_MS2.to_dict()
         }
     }

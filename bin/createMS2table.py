@@ -118,6 +118,13 @@ if __name__ == '__main__':
             # Calculate purity
             lower_offset = precursor.getIsolationWindowLowerOffset()
             higher_offset = precursor.getIsolationWindowUpperOffset()
+
+            no_window = False
+            if lower_offset == 0 or higher_offset == 0 or higher_offset is None or lower_offset is None:
+                lower_offset = 0.1
+                higher_offset = 0.1
+                no_window = True
+
             precursor_mzs, precursor_ints = prev_MS1_spectrum.get_peaks()
             isolated_ints = []
             isolated_mzs = []
@@ -133,7 +140,7 @@ if __name__ == '__main__':
 
 
             total_intensity = sum(isolated_ints)
-            purity = precursor_int / total_intensity if total_intensity > 0 else None
+            purity = precursor_int / total_intensity if total_intensity > 0 and no_window == False else None
 
             # Reverse the mzs and ints arrays to start from the highest mz
             reversed_mzs = mzs[::-1]

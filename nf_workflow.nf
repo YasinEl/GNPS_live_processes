@@ -2,7 +2,7 @@
 
 nextflow.enable.dsl=2
 
-params.mzml_files = "/home/yasin/yasin/projects/GNPS_live_processes/random_data/sixmix.mzML"
+params.mzml_files = "/home/yasin/yasin/projects/GNPS_live_processes/random_data/bruker.mzML"
 params.parameter_file = "/home/yasin/yasin/projects/GNPS_live_processes/random_data/parameter_file.xlsx" 
 params.MS1ppm = 50
 params.MS2ppm = 50
@@ -168,7 +168,7 @@ process featureXML_targeted2csv {
 
     script:
     """
-    TextExporter -in ${featureXML_file} -out ${featureXML_file.baseName}.csv -feature:add_metavalues 100
+    TextExporter -in ${featureXML_file} -out ${featureXML_file.baseName}.csv -feature:add_metavalues 0
     """
 }
 

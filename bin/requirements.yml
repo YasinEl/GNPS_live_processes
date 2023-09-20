@@ -13,3 +13,4 @@ dependencies:
     - pyteomics
     - xmltodict
     - pyopenms
+    - formula_validation
