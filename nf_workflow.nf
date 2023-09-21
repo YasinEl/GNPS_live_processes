@@ -3,7 +3,7 @@
 nextflow.enable.dsl=2
 
 params.mzml_files = "/home/yasin/yasin/projects/GNPS_live_processes/random_data/mauricio_pool_2.mzML"
-params.parameter_file = "/home/yasin/yasin/projects/GNPS_live_processes/random_data/parameter_file.xlsx" 
+params.parameter_file = "data/demo_parameters.xlsx"
 params.MS1ppm = 20
 params.MS2ppm = 20
 params.timeOfUpload = '2023-09-21 13:45:30'
