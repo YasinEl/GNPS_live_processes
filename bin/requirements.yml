@@ -4,7 +4,7 @@ channels:
   - bioconda
 dependencies:
   - python>=3.7
-  - openms=2.9.1
+  - openms
   - pip
   - numpy
   - pandas
@@ -13,6 +13,9 @@ dependencies:
   - pip:
     - molmass
     - pyteomics
+    - rpy2
+    - urllib3 
+    - rdkit
     - xmltodict
     - pyopenms
     - formula_validation
