@@ -2,10 +2,11 @@
 
 nextflow.enable.dsl=2
 
-params.mzml_files = "/home/yasin/yasin/projects/GNPS_live_processes/random_data/bruker.mzML"
+params.mzml_files = "/home/yasin/yasin/projects/GNPS_live_processes/random_data/onr2.mzML"
 params.parameter_file = "/home/yasin/yasin/projects/GNPS_live_processes/random_data/parameter_file.xlsx" 
-params.MS1ppm = 50
-params.MS2ppm = 50
+params.MS1ppm = 20
+params.MS2ppm = 20
+params.minPeaksPerMS2Wanted = 6
 TOOL_FOLDER = "$baseDir/bin"
 
 
@@ -78,10 +79,10 @@ process ApplyFeatureFinderMetabo {
     script:
     """
     FeatureFinderMetabo -in ${mzml_file} -out features.featureXML -algorithm:epd:width_filtering off -threads 10 \
-    -algorithm:ffm:report_convex_hulls true  -algorithm:ffm:mz_scoring_by_elements true -algorithm:ffm:elements CHNOPSClNaKFBr \
+    -algorithm:ffm:report_convex_hulls true  -algorithm:ffm:mz_scoring_by_elements true -algorithm:ffm:elements CHNOPSClNaKFBrLiMgSiCaCrFeCuSe \
     -algorithm:common:chrom_fwhm 2 -algorithm:ffm:use_smoothed_intensities false -algorithm:mtd:mass_error_ppm ${params.MS1ppm} \
     -algorithm:common:noise_threshold_int 1000 -algorithm:ffm:remove_single_traces true -algorithm:mtd:quant_method max_height \
-    -algorithm:mtd:min_trace_length 2 -algorithm:ffm:charge_upper_bound 20
+    -algorithm:mtd:min_trace_length 2 -algorithm:ffm:charge_upper_bound 20 -algorithm:ffm:local_rt_range 1 -algorithm:ffm:local_mz_range 15
     """
 }
 
@@ -227,7 +228,7 @@ process Add_MS2_info_to_output_collection {
 
     script:
     """
-    python $toolFolder/add_MS2_info_to_output_json.py --output_json_path ${output_json} --ms2_inv_csv ${MS2_table}
+    python $toolFolder/add_MS2_info_to_output_json.py --output_json_path ${output_json} --ms2_inv_csv ${MS2_table} 
     """
 }
 
@@ -256,7 +257,8 @@ process Add_MS1_info_to_output_collection {
 
     input:
     path output_json
-    path MS2_table
+    path MS1_table
+    path feature_table
     val toolFolder
 
     output:
@@ -264,7 +266,7 @@ process Add_MS1_info_to_output_collection {
 
     script:
     """
-    python $toolFolder/add_MS1_info_to_output_json.py --output_json_path ${output_json} --ms1_inv_csv ${MS2_table}
+    python $toolFolder/add_MS1_info_to_output_json.py --output_json_path ${output_json} --ms1_inv_csv ${MS1_table} --feature_csv ${feature_table}
     """
 }
 
@@ -293,7 +295,7 @@ workflow {
 
 
     MS1_inventory = CreateMS1Inventory(mzml_files, TOOL_FOLDER)
-    output_json_ms1 = Add_MS1_info_to_output_collection(output_json_ms2, MS1_inventory, TOOL_FOLDER)
+    output_json_ms1 = Add_MS1_info_to_output_collection(output_json_ms2, MS1_inventory, feature_list_csv, TOOL_FOLDER)
 
     
 }

@@ -64,6 +64,35 @@ def preprocess_features(feature_map):
     
     return sorted_mz_values, sorted_features, time_bins
 
+
+def purity_without_isotopes(isolated_mzs, feature_isotopes, isolated_ints, is_within_ppm, ppm, precursor_int):
+
+    
+    sorted_feature_isotopes = sorted(feature_isotopes)
+    i, j = 0, 0
+    to_remove_indices = set()
+    
+    sorted_indices = sorted(range(len(isolated_mzs)), key=lambda k: isolated_mzs[k])
+    sorted_isolated_mzs = [isolated_mzs[i] for i in sorted_indices]
+
+    while i < len(sorted_isolated_mzs) and j < len(sorted_feature_isotopes):
+        if is_within_ppm(sorted_isolated_mzs[i], sorted_feature_isotopes[j], ppm):
+            to_remove_indices.add(sorted_indices[i])
+            i += 1
+        elif sorted_isolated_mzs[i] < sorted_feature_isotopes[j]:
+            i += 1
+        else:
+            j += 1
+
+    #new_isolated_mzs = [x for i, x in enumerate(isolated_mzs) if i not in to_remove_indices]
+    new_isolated_ints = [x for i, x in enumerate(isolated_ints) if i not in to_remove_indices]
+
+    total_intensity = sum(new_isolated_ints)
+
+    purity = precursor_int / total_intensity 
+    
+    return purity
+
 if __name__ == '__main__':
     # Argument parsing (no change here)
     parser = argparse.ArgumentParser(description="Create inventory table for MS2 scans.")
@@ -140,7 +169,7 @@ if __name__ == '__main__':
 
 
             total_intensity = sum(isolated_ints)
-            purity = precursor_int / total_intensity if total_intensity > 0 and no_window == False else None
+            #purity = precursor_int / total_intensity if total_intensity > 0 and no_window == False else None
 
             # Reverse the mzs and ints arrays to start from the highest mz
             reversed_mzs = mzs[::-1]
@@ -164,6 +193,7 @@ if __name__ == '__main__':
             temporal_distance_score = None
             feature_FWHM = None
             prec_apex_ratio = None
+            purity = None
 
             # Find the relevant time bins to search in
             relevant_bin_ids = [int((rt // 1) + i) for i in range(-1, 2)]  # Search in neighboring bins as well
@@ -197,6 +227,15 @@ if __name__ == '__main__':
                     associated_feature_label = feature.getUniqueId()
                     apex_intensity = feature.getMetaValue("max_height")
                     feature_FWHM = feature.getMetaValue("FWHM")
+
+                    feature_isotopes = feature.getMetaValue("masstrace_centroid_mz")
+                    
+                    feature_isotopes = [val for val in feature_isotopes if val >= precursor_mz - lower_offset and val <= precursor_mz + higher_offset]
+                    
+                    if precursor_int > 0 and no_window == False:
+                        purity = purity_without_isotopes(isolated_mzs, feature_isotopes[1:], isolated_ints, is_within_ppm, ppm_tr, precursor_int)
+                    else:
+                        purity = None
 
                     # Calculate the temporal distance score
                     #feature_duration = end_time_feature - start_time_feature
