@@ -1,8 +1,10 @@
 name: GNPS_live_processes_env
 channels:
   - conda-forge
+  - bioconda
 dependencies:
   - python>=3.7
+  - openms=2.9.1
   - pip
   - numpy
   - pandas

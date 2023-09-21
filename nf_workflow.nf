@@ -68,7 +68,8 @@ process Prepare_json_for_output_collection {
 
 process ApplyFeatureFinderMetabo {
     //conda 'openms'
-    conda "bioconda::openms=2.9.1"
+    //conda "bioconda::openms=2.9.1"
+    conda "$TOOL_FOLDER/requirements.yml"
 
     input:
     path mzml_file
@@ -122,7 +123,8 @@ process HandleParameterFile {
 
 process ApplyFeatureFinderMetaboIdent {
     //conda 'openms'
-    conda "bioconda::openms=2.9.1"
+    //conda "bioconda::openms=2.9.1"
+    conda "$TOOL_FOLDER/requirements.yml"
 
     input:
     path mzml_file
@@ -139,7 +141,8 @@ process ApplyFeatureFinderMetaboIdent {
 
 process featureXML2csv {
     //conda 'openms'
-    conda "bioconda::openms=2.9.1"
+    //conda "bioconda::openms=2.9.1"
+    conda "$TOOL_FOLDER/requirements.yml"
 
     input:
     path featureXML_file
@@ -157,7 +160,8 @@ process featureXML2csv {
 
 process featureXML_targeted2csv {
     //conda 'openms'
-    conda "bioconda::openms=2.9.1"
+    // conda "bioconda::openms=2.9.1"
+    conda "$TOOL_FOLDER/requirements.yml"
 
     input:
     path featureXML_file
@@ -176,7 +180,8 @@ process featureXML_targeted2csv {
 
 process ApplyMetaboliteAdductDecharger {
     //conda 'openms'
-    conda "bioconda::openms=2.9.1"
+    // conda "bioconda::openms=2.9.1"
+    conda "$TOOL_FOLDER/requirements.yml"
 
     input:
     path featureXML_file
