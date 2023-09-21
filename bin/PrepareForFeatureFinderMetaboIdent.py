@@ -1,22 +1,22 @@
 import pandas as pd
 import json
 import argparse
-from formula_validation.Formula import Formula 
+#from formula_validation.Formula import Formula 
 
 
-def get_openms_featurefindermetaboident_formulas(row):
-    adduct = row['adduct']
-    formula = row['formula']
+# def get_openms_featurefindermetaboident_formulas(row):
+#     adduct = row['adduct']
+#     formula = row['formula']
 
-    if adduct[-1] == '+':
-        altered_adduct = adduct.replace("]", "-H]")
-    elif adduct[-1] == '-':
-        altered_adduct = adduct.replace("]", "+H]")
+#     if adduct[-1] == '+':
+#         altered_adduct = adduct.replace("]", "-H]")
+#     elif adduct[-1] == '-':
+#         altered_adduct = adduct.replace("]", "+H]")
 
-    altered_adduct = altered_adduct.split(']')[0] + ']'
+#     altered_adduct = altered_adduct.split(']')[0] + ']'
 
-    formula_obj = Formula.formula_from_str(formula, altered_adduct)
-    return formula_obj.get_final_formula_with_adduct()
+#     formula_obj = Formula.formula_from_str(formula, altered_adduct)
+#     return formula_obj.get_final_formula_with_adduct()
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='Create tsv tables for OpenMS (one per STD set).')
@@ -32,7 +32,8 @@ if __name__ == '__main__':
 
     column_rename_map = {
     'name': 'CompoundName',
-    'openms_formula': 'SumFormula',
+    'formula': 'SumFormula',
+    #'openms_formula': 'SumFormula',
     'retention time [seconds]': 'RetentionTime',
     'charge': 'Charge',
     'mz': 'Mass'
@@ -40,7 +41,7 @@ if __name__ == '__main__':
 
     df_STD_openms = df_standards.copy()
 
-    df_STD_openms['openms_formula'] = df_STD_openms.apply(get_openms_featurefindermetaboident_formulas, axis=1)
+    #df_STD_openms['openms_formula'] = df_STD_openms.apply(get_openms_featurefindermetaboident_formulas, axis=1)
     
     df_STD_openms.rename(columns=column_rename_map, inplace=True)
     df_STD_openms = df_STD_openms[['set', 'CompoundName', 'SumFormula', 'Charge', 'RetentionTime', 'Mass']]
