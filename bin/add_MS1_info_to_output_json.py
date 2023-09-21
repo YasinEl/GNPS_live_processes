@@ -41,7 +41,7 @@ if __name__ == "__main__":
 
     metric = {
         "name": "MS1_inventory",
-        "type": "MS1_inventory",
+        "type": "single",
         "collection": "MS1_inventory",
         "reports": {
             "MS1_spectra": len(df_MS1),

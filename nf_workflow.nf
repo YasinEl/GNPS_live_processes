@@ -2,18 +2,18 @@
 
 nextflow.enable.dsl=2
 
-params.mzml_files = "/home/yasin/yasin/projects/GNPS_live_processes/random_data/onr2.mzML"
+params.mzml_files = "/home/yasin/yasin/projects/GNPS_live_processes/random_data/mauricio_pool_2.mzML"
 params.parameter_file = "/home/yasin/yasin/projects/GNPS_live_processes/random_data/parameter_file.xlsx" 
 params.MS1ppm = 20
 params.MS2ppm = 20
-params.minPeaksPerMS2Wanted = 6
+params.timeOfUpload = '2023-09-21 13:45:30'
 TOOL_FOLDER = "$baseDir/bin"
 
 
 process CountMS2Scans {
     conda "$TOOL_FOLDER/requirements.yml"
     
-    publishDir "./nf_output", mode: 'copy'
+    //publishDir "./nf_output", mode: 'copy'
 
     input:
     path mzml_file
@@ -51,7 +51,7 @@ process CreateMS2Inventory {
 process Prepare_json_for_output_collection {
     conda "$TOOL_FOLDER/requirements.yml"
     
-    publishDir "./nf_output", mode: 'copy'
+    //publishDir "./nf_output", mode: 'copy'
 
     input:
     path mzml_file
@@ -62,7 +62,7 @@ process Prepare_json_for_output_collection {
 
     script:
     """
-    python $toolFolder/prepare_json_for_output_collection.py $mzml_file > mzml_summary.json
+    python $toolFolder/prepare_json_for_output_collection.py --filename ${mzml_file} --datetime '${params.timeOfUpload}'
     """
 }
 
@@ -144,7 +144,7 @@ process featureXML2csv {
     input:
     path featureXML_file
 
-    publishDir "./nf_output", mode: 'copy'
+    //publishDir "./nf_output", mode: 'copy'
 
     output:
     path("features_adducts.csv"), emit: csv
@@ -162,7 +162,7 @@ process featureXML_targeted2csv {
     input:
     path featureXML_file
 
-    publishDir "./nf_output", mode: 'copy'
+    //publishDir "./nf_output", mode: 'copy'
 
     output:
     path("*.csv"), emit: csv
@@ -182,7 +182,7 @@ process ApplyMetaboliteAdductDecharger {
     path featureXML_file
     val toolFolder
 
-    publishDir "./nf_output", mode: 'copy'
+    //publishDir "./nf_output", mode: 'copy'
 
     output:
     path("feature_adducts.featureXML"), emit: featureXML
@@ -216,7 +216,7 @@ process Add_targeted_standard_extracts_to_output_collection {
 process Add_MS2_info_to_output_collection {
     conda "$TOOL_FOLDER/requirements.yml"
     
-    publishDir "./nf_output", mode: 'copy'
+    //publishDir "./nf_output", mode: 'copy'
 
     input:
     path output_json

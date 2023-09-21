@@ -4,6 +4,12 @@ import argparse
 from bisect import bisect_left, bisect_right
 import numpy as np
 
+
+"""
+We need to insert something to make sure the precursor was not some isotope of a less abundant monoisotopic peak.
+for that we should take the sorted_mz_values and replace it with two lists of min_mz max_mz corresponding to the highest/lowest isotope
+"""
+
 def filter_values(values, factor=3):
     if not np.array(values).size > 0:  # Check if values is empty
         return []
@@ -67,7 +73,6 @@ def preprocess_features(feature_map):
 
 def purity_without_isotopes(isolated_mzs, feature_isotopes, isolated_ints, is_within_ppm, ppm, precursor_int):
 
-    
     sorted_feature_isotopes = sorted(feature_isotopes)
     i, j = 0, 0
     to_remove_indices = set()

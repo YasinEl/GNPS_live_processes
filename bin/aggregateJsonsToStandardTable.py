@@ -3,7 +3,9 @@ import os
 import argparse
 import pandas as pd
 
-    
+def fill_missing_values(group):
+    single_row = group[group['type'] == 'single'].iloc[0]
+    return group.fillna(single_row)
 
 if __name__ == "__main__":
 
@@ -25,6 +27,7 @@ if __name__ == "__main__":
                 for metric in content['metrics']:
                     data_dict = {
                         "mzml_name": content["mzml_name"],
+                        "datetime": content["time_of_upload"],
                         "name": metric["name"],
                         "type": metric["type"],
                         "collection": metric["collection"],
@@ -35,5 +38,8 @@ if __name__ == "__main__":
 
     # Convert data_list into a pandas DataFrame
     df = pd.DataFrame(data_list)
+
+    #df = df.groupby(['mzml_name', 'datetime']).apply(fill_missing_values).reset_index(drop=True)
+
 
     df.to_csv('all_jsons_table.csv', index = False)

@@ -20,7 +20,7 @@ if __name__ == "__main__":
 
     metric = {
         "name": "MS2_inventory",
-        "type": "MS2_inventory",
+        "type": "single",
         "collection": "MS2_inventory",
         "reports": {
             "MS2_spectra": len(df_MS2['MS Level'].dropna()),

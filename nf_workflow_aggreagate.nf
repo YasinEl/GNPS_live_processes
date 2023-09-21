@@ -69,6 +69,6 @@ process create_realtive_height_overview {
 workflow {
     json_directory = Channel.from(params.json_directory)
     all_jsons_table = aggregateJsonsToTable(json_directory, TOOL_FOLDER)
-    create_RT_overview(all_jsons_table, TOOL_FOLDER) //wont work yet because there is no injection column)
+    //create_RT_overview(all_jsons_table, TOOL_FOLDER) //wont work yet because there is no injection column)
 
 }
