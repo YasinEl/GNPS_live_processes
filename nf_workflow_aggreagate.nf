@@ -2,7 +2,7 @@
 
 nextflow.enable.dsl=2
 
-params.json_directory = "/home/yasin/yasin/projects/GNPS_live_processes/nf_output"
+params.json_directory = "/home/yasin/yasin/projects/GNPS_live_processes/random_data"
 params.parameter_file = "/home/yasin/yasin/projects/GNPS_live_processes/random_data/parameter_file.xlsx" 
 TOOL_FOLDER = "$baseDir/bin"
 
@@ -26,6 +26,24 @@ process aggregateJsonsToTable {
     script:
     """
     python $toolFolder/aggregateJsonsToStandardTable.py --json_directory ${json_directory}
+    """
+}
+
+process aggregateJsonsToJson {
+    conda "$TOOL_FOLDER/requirements.yml"
+    
+    publishDir "./nf_output", mode: 'copy'
+
+    input:
+    path json_directory
+    val toolFolder
+
+    output:
+    path("mzml_summary_aggregation.json"), emit: json
+
+    script:
+    """
+    python $toolFolder/aggregateJsonsToJson.py --json_directory ${json_directory}
     """
 }
 
@@ -69,6 +87,7 @@ process create_realtive_height_overview {
 workflow {
     json_directory = Channel.from(params.json_directory)
     all_jsons_table = aggregateJsonsToTable(json_directory, TOOL_FOLDER)
+    all_jsons_json = aggregateJsonsToJson(json_directory, TOOL_FOLDER)
     //create_RT_overview(all_jsons_table, TOOL_FOLDER) //wont work yet because there is no injection column)
 
 }

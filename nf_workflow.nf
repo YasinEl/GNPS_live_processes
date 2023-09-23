@@ -2,12 +2,13 @@
 
 nextflow.enable.dsl=2
 
-params.mzml_files = "/home/yasin/yasin/projects/GNPS_live_processes/random_data/mauricio_pool_2.mzML"
-params.parameter_file = "data/demo_parameters.xlsx"
+params.mzml_files = "/home/yasin/yasin/projects/GNPS_live_processes/random_data/onr2.mzML"
+params.parameter_file = "$workflow.projectDir/data/demo_parameters.xlsx"
 params.MS1ppm = 20
 params.MS2ppm = 20
 params.timeOfUpload = '2023-09-21 13:45:30'
 TOOL_FOLDER = "$baseDir/bin"
+
 
 
 process CountMS2Scans {
@@ -275,33 +276,53 @@ process Add_MS1_info_to_output_collection {
     """
 }
 
+process CreateMS2map {
+    conda "$TOOL_FOLDER/requirements.yml"
+    
+    publishDir "./nf_output", mode: 'copy'
+
+    input:
+    path ms2inventory_csv
+    val toolFolder
+
+    output:
+    path("MS2map.html"), emit: json
+
+    script:
+    """
+    python $toolFolder/make_MS2_map.py --file_path ${ms2inventory_csv}
+    """
+}
+
 
 
 workflow {
 
     //setup parameters and workflow structure
-    mzml_files = Channel.from(params.mzml_files)
-    parameter_file = Channel.from(params.parameter_file)
-    prepared_parameters = HandleParameterFile(parameter_file, mzml_files, TOOL_FOLDER)
-    output_json = Prepare_json_for_output_collection(params.mzml_files, TOOL_FOLDER)
+    mzml_files_ch = Channel.from(params.mzml_files)
+    parameter_file_ch = Channel.from(params.parameter_file)
+    prepared_parameters = HandleParameterFile(parameter_file_ch, mzml_files_ch, TOOL_FOLDER)
+    output_json = Prepare_json_for_output_collection(mzml_files_ch, TOOL_FOLDER) //currently we just put the current time as time stamp
 
     //targeted standard extraction
     PrepareForFeatureFinderMetaboIdent(prepared_parameters, TOOL_FOLDER)
-    openms_std_output = ApplyFeatureFinderMetaboIdent(mzml_files, PrepareForFeatureFinderMetaboIdent.out.tsv.collect())
+    openms_std_output = ApplyFeatureFinderMetaboIdent(mzml_files_ch, PrepareForFeatureFinderMetaboIdent.out.tsv.collect())
     output_json_targeted = Add_targeted_standard_extracts_to_output_collection(ApplyFeatureFinderMetaboIdent.out.featureXML.collect(), PrepareForFeatureFinderMetaboIdent.out.tsv.collect(), output_json, TOOL_FOLDER)
 
-    feature_list = ApplyFeatureFinderMetabo(params.mzml_files)
+    feature_list = ApplyFeatureFinderMetabo(mzml_files_ch)
     feature_list_w_adducts = ApplyMetaboliteAdductDecharger(feature_list, TOOL_FOLDER)
     feature_list_csv = featureXML2csv(feature_list_w_adducts)
     
     //general assessments
-    MS2_inventory = CreateMS2Inventory(mzml_files, feature_list_w_adducts, TOOL_FOLDER)
+    MS2_inventory = CreateMS2Inventory(mzml_files_ch, feature_list_w_adducts, TOOL_FOLDER)
     output_json_ms2 = Add_MS2_info_to_output_collection(output_json_targeted, MS2_inventory, TOOL_FOLDER)
 
 
-    MS1_inventory = CreateMS1Inventory(mzml_files, TOOL_FOLDER)
+    MS1_inventory = CreateMS1Inventory(mzml_files_ch, TOOL_FOLDER)
     output_json_ms1 = Add_MS1_info_to_output_collection(output_json_ms2, MS1_inventory, feature_list_csv, TOOL_FOLDER)
 
+
+    
     
 }
 

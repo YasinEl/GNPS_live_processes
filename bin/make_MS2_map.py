@@ -106,9 +106,10 @@ if __name__ == '__main__':
             )
         ))
 
-    fig.write_html("MS2map.html")
-
-
+    fig.update_layout(
+        xaxis_title='Retention Time (min)',
+        yaxis_title='Precursor m/z'
+    )
     
     fig.write_html("MS2map.html")
 

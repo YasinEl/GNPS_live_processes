@@ -17,11 +17,16 @@ def main():
     parser.add_argument('--datetime', type=valid_datetime, help="Time of upload.")
     
     args = parser.parse_args()
+
+    timestamp = args.datetime.strftime('%Y-%m-%d %H:%M:%S')
+
+    
+    timestamp = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
         
     base_name = os.path.basename(args.filename)
     
     output_data = {'mzml_name': base_name,
-                   'time_of_upload': args.datetime.strftime('%Y-%m-%d %H:%M:%S')}
+                   'time_of_upload': timestamp}
     output_data['metrics'] = []
     
     with open('mzml_summary.json', 'w') as f:

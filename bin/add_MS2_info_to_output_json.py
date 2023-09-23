@@ -24,7 +24,7 @@ if __name__ == "__main__":
         "collection": "MS2_inventory",
         "reports": {
             "MS2_spectra": len(df_MS2['MS Level'].dropna()),
-            "Unique_prec_MZ": int(df_MS2['Group'].dropna().nunique()),
+            "Unique_prec_MZ": int(df_MS2[df_MS2['MS Level'].notna()]['Group'].dropna().nunique()),
             "Median_Peak_count": int(df_MS2['Peak count'].dropna().median()),
             "Median_filtered_Peak_count": int(df_MS2['Peak count (filtered)'].dropna().median()),
             "Median_precuror_purity": df_MS2['Purity'].dropna().median(),
