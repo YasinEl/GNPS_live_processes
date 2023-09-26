@@ -2,10 +2,11 @@
 
 nextflow.enable.dsl=2
 
-params.mzml_files = "/home/yasin/yasin/projects/GNPS_live_processes/random_data/onr2.mzML"
+//params.mzml_files = "/home/yasin/yasin/projects/GNPS_live_processes/random_data/onr2.mzML"
+params.mzml_files = ""
 params.parameter_file = "$workflow.projectDir/data/demo_parameters.xlsx"
-params.MS1ppm = 20
-params.MS2ppm = 20
+params.MS1ppm = 10
+params.MS2ppm = 10
 params.timeOfUpload = '2023-09-21 13:45:30'
 TOOL_FOLDER = "$baseDir/bin"
 

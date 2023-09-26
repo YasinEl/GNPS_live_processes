@@ -161,7 +161,9 @@ cython_debug/
 
 random_data/
 nf_output/
+big_test_set/
 work/
 .nextflow.log*
 .nextflow/cache/
 .nextflow/history
+nohup.out

@@ -58,10 +58,3 @@ def create_filtered_table(json_file, name=None, type_=None, collection=None, inc
     
     return df
 
-
-if __name__ == "__main__":
-    json_file_path = '/home/yasin/yasin/projects/GNPS_live_processes/nf_output/mzml_summary_aggregation.json'
-    #df = create_filtered_table(json_file_path, type_="standards")
-    df = create_filtered_table(json_file_path, type_="standards", include_keys = 'EIC')
-    print(df)
-    print(len(df))
