@@ -1,5 +1,5 @@
 import dash
-from dash import dcc, html, Input, Output
+from dash import dcc, html, Input, Output, State
 import dash_bootstrap_components as dbc
 import numpy as np
 import plotly.graph_objects as go
@@ -73,24 +73,74 @@ def create_filtered_table(json_file, name=None, type_=None, collection=None, inc
     return df
 
 
+def assign_MS2_groups(df_input, peak_count_threshold, purity_threshold, intensity_ratio_threshold, collision_energy_ratio):
+    # Identify the highest precursor intensity for each group
+    df = df_input.copy()
+    df['highest_prec_int'] = df.groupby(['Group', 'Associated Feature Label', 'Collision energy', 'mzml_file'])[
+                                 'Precursor intensity'].transform(max) == df['Precursor intensity']
+
+    # Assign 'no MS2' to rows where MS Level is NaN
+    df.loc[df['MS Level'].isna(), 'f_MS2'] = 'no MS2'
+
+    # The following lines categorize the MS2 features based on multiple criteria such as peak count, purity, and intensity.
+
+    # Good quality MS2 categorization
+    df.loc[(df['Peak count (filtered)'] >= peak_count_threshold) & (df['Purity'] > purity_threshold) & (
+                df['Feature Apex intensity'] > 0), 'f_MS2'] = f'≥{str(peak_count_threshold)} fragments'
+
+    # Bad quality due to apex triggering
+    df.loc[(df['Peak count (filtered)'] < peak_count_threshold) & (
+                df['Prec-Apex intensity ratio'] < intensity_ratio_threshold) & (df[
+                                                                                    'Feature Apex intensity'] > 0), 'f_MS2'] = f'<{str(peak_count_threshold)} fragments; triggered <{str(intensity_ratio_threshold * 100)}% of apex'
+
+    # Bad quality due to impurities
+    df.loc[(df['Peak count (filtered)'] >= peak_count_threshold) & (df['Purity'] <= purity_threshold) & (df[
+                                                                                                             'Feature Apex intensity'] > 0), 'f_MS2'] = f'≥{str(peak_count_threshold)} fragments; precursor purity <{(purity_threshold) * 100}%'
+
+    # Bad quality due to higher collision energy
+    df.loc[(df['Peak count (filtered)'] <= peak_count_threshold) & (
+                (df['Precursor intensity in MS2'] / df['Max fragment intensity']) > collision_energy_ratio) & (df[
+                                                                                                                   'Feature Apex intensity'] > 0), 'f_MS2'] = f'<{str(peak_count_threshold)} fragments; precursor ion >{str(collision_energy_ratio * 100)}% of MS2 base peak'
+
+    # Mark vacant MS2 spots
+    df.loc[df['Feature Apex intensity'] == 0, 'f_MS2'] = 'vacant MS2'
+
+    # General bad MS2 categorization
+    df.loc[(df['Peak count (filtered)'] < peak_count_threshold) & (df['f_MS2'].isna()) & (
+                df['Feature Apex intensity'] > 0), 'f_MS2'] = f'<{str(peak_count_threshold)} fragments'
+
+    # Mark redundant MS2 features
+    df.loc[(df['highest_prec_int'] == False) & (df['Feature Apex intensity'] > 0) & ~df[
+        'MS Level'].isna(), 'f_MS2'] = 'redundant MS2'
+
+    # Fill NaN or zero apex intensities with precursor intensities
+    df.loc[df['Feature Apex intensity'].isna() | (df['Feature Apex intensity'] == 0), 'Feature Apex intensity'] = df[
+        'Precursor intensity']
+
+    return df
 
 # Initialize app
 app = dash.Dash(__name__, suppress_callback_exceptions=True, external_stylesheets=[dbc.themes.FLATLY])
 
 
+#load data for everything
 df_standards = create_filtered_table('C:/Users/elabi/Downloads/mzml_summary_aggregation.json',  type_="standards")
-
-mzml_list = df_standards['mzml_file'].unique().tolist()
-
-
 lcms_df = create_filtered_table("C:/Users/elabi/Downloads/mzml_summary_aggregation.json",  type_="standards", include_keys = 'EIC')
-
 ms1_inv = create_filtered_table("C:/Users/elabi/Downloads/mzml_summary_aggregation.json",  collection="MS1_inventory")
 ms1_tic = create_filtered_table("C:/Users/elabi/Downloads/mzml_summary_aggregation.json",  collection="MS1_inventory", include_keys = 'MS1_inventory')
-
 ms2_inv = create_filtered_table("C:/Users/elabi/Downloads/mzml_summary_aggregation.json",  collection="MS2_inventory")
 ms2_scans = create_filtered_table("C:/Users/elabi/Downloads/mzml_summary_aggregation.json",  collection="MS2_inventory", include_keys = 'MS2_inventory')
 
+
+#get the lists of options for dropdowns etc
+mzml_list = df_standards['mzml_file'].unique().tolist()
+
+ms_scan_variables = ['Retention Time (min)', 'Precursor m/z', 'Collision energy',
+       'Precursor charge', 'Max fragment intensity', 'Precursor intensity',
+       'Purity', 'Peak count', 'Peak count (filtered)',
+       'Associated Feature Label', 'Feature Apex intensity', 'FWHM',
+       'Rel Feature Apex distance', 'Prec-Apex intensity ratio',
+       'Precursor intensity in MS2']
 
 # Navbar
 navbar = dbc.NavbarSimple(
@@ -126,7 +176,8 @@ app.layout = html.Div([
             ], id='tabs', active_tab='standards'),
             html.Div(id='tabs-content'),
         ], width=10),
-    ])
+    ]),
+    dcc.Store(id='store-df'),
 ])
 
 
@@ -225,13 +276,137 @@ def render_tab(tab_value):
                                  value=df_standards['name'].unique()[0],
                                  style={'width': '200px', 'margin-top': '20px'}),
                     dcc.Graph(id='lcms-plot', style={'height': '800px', 'marginBottom': '10px'})
-                ], style={'border': '1px solid grey', 'border-radius': '8px', 'padding': '10px', 'marginBottom': '10px'}),
+                ], style={'border': '1px solid grey', 'border-radius': '8px', 'padding': '10px',
+                          'marginBottom': '10px'}),
             ], width=6)
         ], style={'marginTop': '10px'})
     elif tab_value == 'ms2':
         return html.Div([
-            # Content for MS2 Tab
-        ])
+            dbc.Row([
+                dbc.Col([
+                    html.Div([
+                        dcc.Slider(
+                            id='peak-count-slider',
+                            min=1,
+                            max=20,
+                            step=1,
+                            value=4,
+                            persistence=True
+                        ),
+                        html.Label("Peak Count Threshold")
+                    ]),
+
+                    html.Div([
+                        dcc.Slider(
+                            id='purity-slider',
+                            min=0,
+                            max=1,
+                            step=0.1,
+                            value=0.5,
+                            persistence=True
+                        ),
+                        html.Label("Purity Threshold")
+                    ]),
+
+                    html.Div([
+                        dcc.Slider(
+                            id='intensity-ratio-slider',
+                            min=0,
+                            max=1,
+                            step=0.1,
+                            value=0.3,
+                            persistence=True
+                        ),
+                        html.Label("Intensity Ratio Threshold")
+                    ]),
+
+                    html.Div([
+                        dcc.Slider(
+                            id='collision-energy-slider',
+                            min=0,
+                            max=1,
+                            step=0.1,
+                            value=0.7,
+                            persistence=True
+                        ),
+                        html.Label("Collision Energy Ratio")
+                    ]),
+
+                    html.Div([
+                        html.Button('Update Plots', id='update-button', n_clicks=0)
+                    ]),
+                ], width=6),
+
+                dbc.Col([
+                    html.Div([
+                        html.Div("Plot 1 Placeholder", style={'textAlign': 'center', 'padding': '5px',
+                                                              'backgroundColor': 'rgba(128, 128, 128, 0.1)'}),
+                        dcc.Loading(
+                            id="loading",
+                            type="circle",
+                            children=[
+                                dcc.Graph(id='ms2-plot1', style={'height': '400px', 'marginBottom': '10px'})
+                            ])
+                    ], style={'border': '1px solid grey', 'border-radius': '8px', 'padding': '10px',
+                              'marginBottom': '10px'}),
+                ], width=6),
+            ], style={'marginTop': '10px'}),
+
+            dbc.Row([
+                dbc.Col([
+                    html.Div([
+                        html.Div("MS2 scan map", style={'textAlign': 'center', 'padding': '5px',
+                                                              'backgroundColor': 'rgba(128, 128, 128, 0.1)',
+                                                              'marginBottom': '5px'}),
+                        dbc.Row([
+                            dbc.Col(
+                                dcc.Dropdown(
+                                    id='mzml-file-dropdown',
+                                    options=[{'label': i, 'value': i} for i in mzml_list],
+                                    value=mzml_list[0],
+                                    persistence=True),
+                                width=4),
+                            dbc.Col([
+                                dcc.Dropdown(
+                                    id='MS2-map-x-dropdown',
+                                    options=[{'label': i, 'value': i} for i in ms_scan_variables],
+                                    value='Retention Time (min)',
+                                    persistence=True
+                                ),
+                                html.Div(style={'height': '5px'}),  # For spacing
+                                dcc.Checklist(
+                                    id='log10-x-checkbox',
+                                    options=[{'label': 'Log10', 'value': 'log10'}],
+                                    value=[],
+                                    persistence=True
+                                )
+                            ], width=4),
+                            dbc.Col([
+                                dcc.Dropdown(
+                                    id='MS2-map-y-dropdown',
+                                    options=[{'label': i, 'value': i} for i in ms_scan_variables],
+                                    value='Precursor intensity',
+                                    persistence=True
+                                ),
+                                html.Div(style={'height': '5px'}),  # For spacing
+                                dcc.Checklist(
+                                    id='log10-y-checkbox',
+                                    options=[{'label': 'Log10', 'value': 'log10'}],
+                                    value=['log10'],
+                                    persistence=True
+                                )
+                            ], width=4),
+                        ]),
+                        dcc.Loading(
+                            id="loading",
+                            type="circle",
+                            children=[
+                                dcc.Graph(id='ms2-plot2', style={'height': '800px', 'marginBottom': '10px'})])
+                    ], style={'border': '1px solid grey', 'border-radius': '8px', 'padding': '10px',
+                              'marginBottom': '10px'}),
+                ], width=12),
+            ])
+        ], style={'marginTop': '10px'})
     elif tab_value == 'ms1':
         return dbc.Row([
             dbc.Col([
@@ -245,7 +420,11 @@ def render_tab(tab_value):
                         ],
                         value=['show_relative']
                     ),
-                    dcc.Graph(id='tic-statistics-plot', style={'height': '800px', 'marginBottom': '10px'})
+                    dcc.Loading(
+                        id="loading",
+                        type="circle",
+                        children=[
+                            dcc.Graph(id='tic-statistics-plot', style={'height': '800px', 'marginBottom': '10px'})])
                 ], style={'border': '1px solid grey', 'border-radius': '8px', 'padding': '10px',
                           'marginBottom': '10px'}),
 
@@ -255,17 +434,17 @@ def render_tab(tab_value):
                 html.Div([
                     html.Div("Total ion chromatograms", style={'textAlign': 'center', 'padding': '5px',
                                                                'backgroundColor': 'rgba(128, 128, 128, 0.1)'}),
-                    dcc.Graph(id='ms1-upper-plot', style={'height': '800px', 'marginBottom': '10px'})
+                    dcc.Loading(
+                        id="loading",
+                        type="circle",
+                        children=[
+                            dcc.Graph(id='ms1-upper-plot', style={'height': '800px', 'marginBottom': '10px'})])
                 ], style={'border': '1px solid grey', 'border-radius': '8px', 'padding': '10px',
                           'marginBottom': '10px'}),
             ], width=6),
         ], style={'marginTop': '10px'})
 
 
-# @app.callback(
-#     Output('tic-statistics-plot', 'figure'),
-#     Input('mzml-checklist', 'value')
-# )
 @app.callback(
     Output('tic-statistics-plot', 'figure'),
     Input('mzml-checklist', 'value'),
@@ -446,6 +625,98 @@ def update_plots(selected_mzml, selected_set, scale_option):
         legend_title_text='',
         legend=dict(x=0.5, xanchor='center', y=1.1, orientation='h'),
         xaxis2=dict(title='Sample Injection Time')
+    )
+
+    return fig
+
+@app.callback(
+    Output('store-df', 'data'),
+    [Input('update-button', 'n_clicks')],
+    [State('peak-count-slider', 'value'),
+     State('purity-slider', 'value'),
+     State('intensity-ratio-slider', 'value'),
+     State('collision-energy-slider', 'value')]
+)
+def update_dataframe(n_clicks, peak_count_threshold, purity_threshold, intensity_ratio_threshold, collision_energy_ratio):
+    updated_df = assign_MS2_groups(ms2_scans, peak_count_threshold, purity_threshold, intensity_ratio_threshold, collision_energy_ratio)
+    return updated_df.to_dict('records')
+
+
+@app.callback(
+    Output('ms2-plot2', 'figure'),
+    Input('store-df', 'data'),
+    Input('mzml-file-dropdown', 'value'),
+    Input('MS2-map-x-dropdown', 'value'),
+    Input('MS2-map-y-dropdown', 'value'),
+    Input('log10-x-checkbox', 'value'),
+    Input('log10-y-checkbox', 'value'),
+    State('peak-count-slider', 'value'),
+    State('purity-slider', 'value'),
+    State('intensity-ratio-slider', 'value'),
+    State('collision-energy-slider', 'value')
+)
+
+def update_right_plot(df_dict, selected_mzml, plot_x, plot_y, log_x, log_y, peak_count_threshold, purity_threshold, intensity_ratio_threshold, collision_energy_ratio):
+    if df_dict is None:
+        raise dash.exceptions.PreventUpdate
+
+    df = pd.DataFrame(df_dict)
+    return make_MS2_map(df, selected_mzml, plot_x, plot_y, log_x, log_y, peak_count_threshold, purity_threshold, intensity_ratio_threshold, collision_energy_ratio)
+
+
+def make_MS2_map(df_input, selected_mzml, plot_x, plot_y, log_x, log_y, peak_count_threshold, purity_threshold, intensity_ratio_threshold, collision_energy_ratio):
+
+    df = df_input.copy()
+
+    df = assign_MS2_groups(df, peak_count_threshold, purity_threshold, intensity_ratio_threshold, collision_energy_ratio)
+
+    df = df[df['mzml_file'] == selected_mzml]
+
+    if 'log10' in log_x:
+        df[f'log({plot_x})'] = np.where(df[plot_x] > 0, np.log10(df[plot_x]), None)
+        plot_x = f'log({plot_x})'
+
+    if 'log10' in log_y:
+        df[f'log({plot_y})'] = np.where(df[plot_y] > 0, np.log10(df[plot_y]), None)
+        plot_y = f'log({plot_y})'
+
+    color_map = {
+        'vacant MS2': '#E41A1C',
+        'no MS2': '#377EB8',
+        f'≥{str(peak_count_threshold)} fragments': '#4DAF4A',
+        'redundant MS2': '#984EA3',
+        f'<{str(peak_count_threshold)} fragments; precursor purity <{(purity_threshold) * 100}%': '#FF7F00',
+        f'<{str(peak_count_threshold)} fragments; precursor ion >{str(collision_energy_ratio * 100)}% of MS2 base peak': '#000000',
+        f'<{str(peak_count_threshold)} fragments': '#A65628',
+        f'<{str(peak_count_threshold)} fragments; triggered <{str(intensity_ratio_threshold * 100)}% of apex': '#F781BF'
+    }
+
+    filtered_color_map = {k: v for k, v in color_map.items() if k in df['f_MS2'].unique()}
+
+    # Initialize an empty figure
+    fig = go.Figure()
+
+    # Loop through each category in f_MS2 to plot each as its own scatter series
+    for category in df['f_MS2'].unique():
+        sub_df = df[df['f_MS2'] == category]
+        color = filtered_color_map.get(category, '#808080')
+
+        fig.add_trace(go.Scatter(
+            x=sub_df[plot_x],
+            y=sub_df[plot_y],
+            mode='markers',
+            name=category,
+            marker=dict(
+                color=color,
+                line=dict(color=color, width=2),
+                size=6,
+                opacity=0.7
+            )
+        ))
+
+    fig.update_layout(
+        xaxis_title=plot_x,
+        yaxis_title=plot_y
     )
 
     return fig

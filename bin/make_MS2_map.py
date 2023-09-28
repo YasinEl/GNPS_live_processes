@@ -8,7 +8,7 @@ import plotly.graph_objects as go
 def assign_MS2_groups(df, peak_count_threshold, purity_threshold, intensity_ratio_threshold, collision_energy_ratio):
     
     # Identify the highest precursor intensity for each group
-    df['highest_prec_int'] = df.groupby(['Group', 'Associated Feature Label', 'Collision energy'])['Precursor intensity'].transform(max) == df['Precursor intensity']
+    df['highest_prec_int'] = df.groupby(['Group', 'Associated Feature Label', 'Collision energy', 'mzml_file'])['Precursor intensity'].transform(max) == df['Precursor intensity']
     
     # Assign 'no MS2' to rows where MS Level is NaN
     df.loc[df['MS Level'].isna(), 'f_MS2'] = 'no MS2'
@@ -53,6 +53,7 @@ if __name__ == '__main__':
     args = parser.parse_args()
 
     df = pd.read_csv(args.file_path, dtype={
+        "mzml_file": str,
         "MS Level": float,
         "Precursor charge": float,
         "Max fragment intensity": float,
