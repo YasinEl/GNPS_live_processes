@@ -10,6 +10,8 @@ from plotly.colors import find_intermediate_color
 import plotly.express as px
 from plotly.express.colors import sample_colorscale
 
+from sklearn.decomposition import PCA
+from sklearn.preprocessing import StandardScaler
 import json
 import pandas as pd
 
@@ -119,6 +121,37 @@ def assign_MS2_groups(df_input, peak_count_threshold, purity_threshold, intensit
 
     return df
 
+
+def prepare_pca_data(df):
+    df['rt_bin'] = (df['rt'] // 3) * 3
+    df_grouped = df.groupby(['mzml_file', 'rt_bin']).agg({'intensity': 'mean'}).reset_index()
+
+    all_bins = df_grouped['rt_bin'].unique()
+    all_files = df_grouped['mzml_file'].unique()
+
+    fill_rows = []
+    for f in all_files:
+        existing_bins = set(df_grouped[df_grouped['mzml_file'] == f]['rt_bin'])
+        missing_bins = set(all_bins) - existing_bins
+        for b in missing_bins:
+            fill_rows.append([f, b, 0])
+
+    df_fill = pd.DataFrame(fill_rows, columns=['mzml_file', 'rt_bin', 'intensity'])
+    df_filled = pd.concat([df_grouped, df_fill], ignore_index=True)
+
+    X = df_filled.pivot(index='mzml_file', columns='rt_bin', values='intensity').fillna(0)
+
+    # Scaling and centering the data
+    scaler = StandardScaler()
+    X_scaled = scaler.fit_transform(X)
+
+    pca = PCA(n_components=2)
+    principalComponents = pca.fit_transform(X_scaled)
+
+    finalDf = pd.DataFrame(data=principalComponents, columns=['PC1', 'PC2'])
+    finalDf['mzml_file'] = X.index
+    return finalDf
+
 # Initialize app
 app = dash.Dash(__name__, suppress_callback_exceptions=True, external_stylesheets=[dbc.themes.FLATLY])
 
@@ -132,6 +165,7 @@ ms2_inv = create_filtered_table("C:/Users/elabi/Downloads/mzml_summary_aggregati
 ms2_scans = create_filtered_table("C:/Users/elabi/Downloads/mzml_summary_aggregation.json",  collection="MS2_inventory", include_keys = 'MS2_inventory')
 
 
+
 #get the lists of options for dropdowns etc
 mzml_list = df_standards['mzml_file'].unique().tolist()
 
@@ -140,7 +174,7 @@ ms_scan_variables = ['Retention Time (min)', 'Precursor m/z', 'Collision energy'
        'Purity', 'Peak count', 'Peak count (filtered)',
        'Associated Feature Label', 'Feature Apex intensity', 'FWHM',
        'Rel Feature Apex distance', 'Prec-Apex intensity ratio',
-       'Precursor intensity in MS2']
+       'Precursor intensity in MS2', 'Apex/Precursor intensity']
 
 # Navbar
 navbar = dbc.NavbarSimple(
@@ -385,7 +419,7 @@ def render_tab(tab_value):
                                 dcc.Dropdown(
                                     id='MS2-map-y-dropdown',
                                     options=[{'label': i, 'value': i} for i in ms_scan_variables],
-                                    value='Precursor intensity',
+                                    value='Apex/Precursor intensity',
                                     persistence=True
                                 ),
                                 html.Div(style={'height': '5px'}),  # For spacing
@@ -408,49 +442,77 @@ def render_tab(tab_value):
             ])
         ], style={'marginTop': '10px'})
     elif tab_value == 'ms1':
-        return dbc.Row([
-            dbc.Col([
-                html.Div([
-                    html.Div("TIC Statistics", style={'textAlign': 'center', 'padding': '5px',
-                                                      'backgroundColor': 'rgba(128, 128, 128, 0.1)'}),
-                    dcc.Checklist(
-                        id='relative-to-median-checkbox',
-                        options=[
-                            {'label': 'Relative to median', 'value': 'show_relative'}
-                        ],
-                        value=['show_relative']
-                    ),
-                    dcc.Loading(
-                        id="loading",
-                        type="circle",
-                        children=[
-                            dcc.Graph(id='tic-statistics-plot', style={'height': '800px', 'marginBottom': '10px'})])
-                ], style={'border': '1px solid grey', 'border-radius': '8px', 'padding': '10px',
-                          'marginBottom': '10px'}),
+        return html.Div([
+            dbc.Row([
+                dbc.Col([
+                    html.Div([
+                        html.Div("Total ion chromatograms", style={'textAlign': 'center', 'padding': '5px',
+                                                          'backgroundColor': 'rgba(128, 128, 128, 0.1)'}),
+                        dcc.Loading(
+                            id="loading",
+                            type="circle",
+                            children=[
+                                dcc.Graph(id='tic-plot', style={'height': '800px', 'marginBottom': '10px'})])
+                    ], style={'border': '1px solid grey', 'border-radius': '8px', 'padding': '10px',
+                              'marginBottom': '10px'}),
+                ], width=12),  # This makes it span the entire width
+            ]),
 
-            ], width=6),
+            dbc.Row([
+                dbc.Col([
+                    html.Div([
+                        html.Div("TIC Statistics", style={'textAlign': 'center', 'padding': '5px',
+                                                                   'backgroundColor': 'rgba(128, 128, 128, 0.1)'}),
+                        dcc.Checklist(
+                            id='relative-to-median-checkbox',
+                            options=[
+                                {'label': 'Relative to median', 'value': 'show_relative'}
+                            ],
+                            value=['show_relative']
+                        ),
+                        dcc.Loading(
+                            id="loading",
+                            type="circle",
+                            children=[
+                                dcc.Graph(id='tic-stats_plot', style={'height': '800px', 'marginBottom': '10px'})])
+                    ], style={'border': '1px solid grey', 'border-radius': '8px', 'padding': '10px',
+                              'marginBottom': '10px'}),
+                ], width=6),
 
-            dbc.Col([
-                html.Div([
-                    html.Div("Total ion chromatograms", style={'textAlign': 'center', 'padding': '5px',
-                                                               'backgroundColor': 'rgba(128, 128, 128, 0.1)'}),
-                    dcc.Loading(
-                        id="loading",
-                        type="circle",
-                        children=[
-                            dcc.Graph(id='ms1-upper-plot', style={'height': '800px', 'marginBottom': '10px'})])
-                ], style={'border': '1px solid grey', 'border-radius': '8px', 'padding': '10px',
-                          'marginBottom': '10px'}),
-            ], width=6),
-        ], style={'marginTop': '10px'})
+                dbc.Col([
+                    html.Div([
+                        html.Div("PCA Plot", style={'textAlign': 'center', 'padding': '5px',
+                                                    'backgroundColor': 'rgba(128, 128, 128, 0.1)'}),
+                        dcc.Loading(
+                            id="loading-pca",
+                            type="circle",
+                            children=[
+                                dcc.Graph(id='pca-plot', style={'height': '800px', 'marginBottom': '10px'})])
+                    ], style={'border': '1px solid grey', 'border-radius': '8px', 'padding': '10px',
+                              'marginBottom': '10px'}),
+                ], width=6),
+            ]),
+        ])
 
 
 @app.callback(
-    Output('tic-statistics-plot', 'figure'),
+    Output('pca-plot', 'figure'),
+    Input('mzml-checklist', 'value')
+)
+
+def create_pca_plot(selected_mzml):
+    filtered_ms1_tic = ms1_tic[ms1_tic['mzml_file'].isin(selected_mzml)].copy()
+    pca_data = prepare_pca_data(filtered_ms1_tic)
+    fig = px.scatter(pca_data, x='PC1', y='PC2', color='mzml_file')
+    return fig
+
+
+@app.callback(
+    Output('tic-stats_plot', 'figure'),
     Input('mzml-checklist', 'value'),
     Input('relative-to-median-checkbox', 'value')
 )
-def update_ms1_lower_plot(selected_mzml, relative_to_median_checkbox_value):
+def TIC_stats_plot(selected_mzml, relative_to_median_checkbox_value):
     filtered_ms1_inv = ms1_inv[ms1_inv['mzml_file'].isin(selected_mzml)].copy()
     filtered_ms1_inv = filtered_ms1_inv.sort_values(by='date_time')
 
@@ -481,10 +543,10 @@ def update_ms1_lower_plot(selected_mzml, relative_to_median_checkbox_value):
     return fig
 
 @app.callback(
-    Output('ms1-upper-plot', 'figure'),
+    Output('tic-plot', 'figure'),
     Input('mzml-checklist', 'value')
 )
-def update_ms1_upper_plot(selected_mzml):
+def TIC_plot(selected_mzml):
 
     filtered_ms1_tic = ms1_tic[ms1_tic['mzml_file'].isin(selected_mzml)].copy()
 
@@ -671,6 +733,13 @@ def make_MS2_map(df_input, selected_mzml, plot_x, plot_y, log_x, log_y, peak_cou
     df = assign_MS2_groups(df, peak_count_threshold, purity_threshold, intensity_ratio_threshold, collision_energy_ratio)
 
     df = df[df['mzml_file'] == selected_mzml]
+
+    if plot_x in 'Apex/Precursor intensity' or plot_y in 'Apex/Precursor intensity':
+        df['Apex/Precursor intensity'] = df.apply(
+            lambda row: row['Precursor intensity'] if pd.notna(row['Precursor intensity']) and row[
+                'Precursor intensity'] != 0 else row['Feature Apex intensity'],
+            axis=1
+        )
 
     if 'log10' in log_x:
         df[f'log({plot_x})'] = np.where(df[plot_x] > 0, np.log10(df[plot_x]), None)
