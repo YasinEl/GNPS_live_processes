@@ -1,5 +1,8 @@
 #!/bin/bash
 
+
+#can be run with ./test_many.sh /home/yasin/yasin/projects/GNPS_live_processes/big_test_set 
+
 # Directory containing mzML files
 input_dir=$1
 

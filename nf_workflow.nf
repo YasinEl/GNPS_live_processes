@@ -124,8 +124,6 @@ process HandleParameterFile {
 }
 
 process ApplyFeatureFinderMetaboIdent {
-    //conda 'openms'
-    //conda "bioconda::openms=2.9.1"
     conda "$TOOL_FOLDER/requirements.yml"
 
     input:
@@ -137,7 +135,11 @@ process ApplyFeatureFinderMetaboIdent {
 
     script:
     """
-    FeatureFinderMetaboIdent -in ${mzml_file} -id ${standard_set} -out ${standard_set.baseName}.featureXML -threads 5 -extract:n_isotopes 2
+    if [[ "${standard_set.baseName}" != "set_none" ]]; then
+        FeatureFinderMetaboIdent -in ${mzml_file} -id ${standard_set} -out ${standard_set.baseName}.featureXML -threads 5 -extract:n_isotopes 2
+    else
+        cp ${standard_set} set_none.featureXML
+    fi
     """
 }
 
@@ -302,6 +304,9 @@ workflow {
     //setup parameters and workflow structure
     mzml_files_ch = Channel.from(params.mzml_files)
     parameter_file_ch = Channel.from(params.parameter_file)
+
+    println "${params.mzml_files}"
+
     prepared_parameters = HandleParameterFile(parameter_file_ch, mzml_files_ch, TOOL_FOLDER)
     output_json = Prepare_json_for_output_collection(mzml_files_ch, TOOL_FOLDER) //currently we just put the current time as time stamp
 

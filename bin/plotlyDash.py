@@ -14,6 +14,7 @@ from sklearn.decomposition import PCA
 from sklearn.preprocessing import StandardScaler
 import json
 import pandas as pd
+import re
 
 def create_filtered_table(json_file, name=None, type_=None, collection=None, include_keys=None):
     with open(json_file, 'r') as f:
@@ -145,12 +146,39 @@ def prepare_pca_data(df):
     scaler = StandardScaler()
     X_scaled = scaler.fit_transform(X)
 
-    pca = PCA(n_components=2)
+    pca = PCA()
+    pca.fit(X_scaled)
+    cumulative_variance = np.cumsum(pca.explained_variance_ratio_)
+    n_pcs = np.where(cumulative_variance >= 0.95)[0][0] + 1
+
+    pca = PCA(n_components=n_pcs)
     principalComponents = pca.fit_transform(X_scaled)
 
-    finalDf = pd.DataFrame(data=principalComponents, columns=['PC1', 'PC2'])
+    # Get explained variance ratio for each component
+    explained_variance_ratio = pca.explained_variance_ratio_
+
+
+
+
+    # Get loadings
+    loadings = pca.components_
+
+    # Create loadings DataFrame
+    loadings_df = pd.DataFrame(loadings, columns=X.columns, index=[f'PC{i + 1}' for i in range(loadings.shape[0])])
+
+    # Create final DataFrame with explained variance in brackets
+    finalDf = pd.DataFrame(data=principalComponents,
+                           columns=[f'PC{i + 1} ({explained_variance_ratio[i]:.2f})' for i in range(n_pcs)])
     finalDf['mzml_file'] = X.index
-    return finalDf
+
+    # Add date_time and order by date_time
+    date_time_mapping = df.groupby('mzml_file')['date_time'].first()
+    finalDf['date_time'] = finalDf['mzml_file'].map(date_time_mapping)
+    finalDf['date_time'] = pd.to_datetime(finalDf['date_time'])
+    finalDf.sort_values(by='date_time', inplace=True)
+    finalDf['datetime_order'] = range(1, len(finalDf) + 1)
+
+    return finalDf, loadings_df
 
 # Initialize app
 app = dash.Dash(__name__, suppress_callback_exceptions=True, external_stylesheets=[dbc.themes.FLATLY])
@@ -167,7 +195,9 @@ ms2_scans = create_filtered_table("C:/Users/elabi/Downloads/mzml_summary_aggrega
 
 
 #get the lists of options for dropdowns etc
-mzml_list = df_standards['mzml_file'].unique().tolist()
+mzml_list = ms1_inv['mzml_file'].unique().tolist()
+
+print(mzml_list)
 
 ms_scan_variables = ['Retention Time (min)', 'Precursor m/z', 'Collision energy',
        'Precursor charge', 'Max fragment intensity', 'Precursor intensity',
@@ -277,25 +307,30 @@ def render_tab(tab_value):
             dbc.Col([
                 html.Div([
                     html.Div("Metrics over time", style={'textAlign': 'center', 'padding': '5px',
-                                                         'backgroundColor': 'rgba(128, 128, 128, 0.1)'}),
+                                                         'backgroundColor': 'rgba(128, 128, 128, 0.1)',
+                                                         'marginBottom': '20px'}),
                     html.Div([
-                        html.Div([
-                            dcc.Dropdown(
-                                id='set-dropdown',
-                                options=[{'label': i, 'value': i} for i in df_standards['collection'].unique()],
-                                value=df_standards['collection'].unique()[0],
-                                style={'width': '90%'}
-                            ),
-                        ], style={'display': 'inline-block', 'width': '30%'}),
+                        dbc.Row([
+                            dbc.Col([
+                                html.Label('Standard set', style={'marginBottom': '10px'}),
+                                dcc.Dropdown(
+                                    id='set-dropdown',
+                                    options=[{'label': i, 'value': i} for i in df_standards['collection'].unique()],
+                                    value=df_standards['collection'].unique()[0],
+                                    style={'width': '90%'}
+                                ),
+                            ], width=4, className='align-self-end'),
 
-                        html.Div([
-                            dcc.Checklist(
-                                id='relative-scale-checkbox',
-                                options=[{'label': 'Relative Scale', 'value': 'relative'}],
-                                value=[]
-                            ),
-                        ], style={'display': 'inline-block', 'width': '20%', 'vertical-align': 'top'}),
-                    ], style={'margin-top': '20px'}),
+                            dbc.Col([
+                                html.Div([], style={'height': '38px'}),  # spacer
+                                dcc.Checklist(
+                                    id='relative-scale-checkbox',
+                                    options=[{'label': 'Relative Scale', 'value': 'relative'}],
+                                    value=[]
+                                ),
+                            ], width=4, className='align-self-end'),
+                        ], style={'margin-top': '10px'}),
+                    ]),
 
                     dcc.Graph(id='subplots', style={'height': '800px', 'marginBottom': '10px'})
                 ], style={'border': '1px solid grey', 'border-radius': '8px', 'padding': '10px',
@@ -304,16 +339,24 @@ def render_tab(tab_value):
 
             dbc.Col([
                 html.Div([
-                    html.Div("Extracted ion chromatograms", style={'textAlign': 'center', 'padding': '5px', 'backgroundColor': 'rgba(128, 128, 128, 0.1)'}),
-                    dcc.Dropdown(id='molecule-dropdown',
-                                 options=[{'label': i, 'value': i} for i in df_standards['name'].unique()],
-                                 value=df_standards['name'].unique()[0],
-                                 style={'width': '200px', 'margin-top': '20px'}),
+                    html.Div("Extracted ion chromatograms", style={'textAlign': 'center', 'padding': '5px',
+                                                                   'backgroundColor': 'rgba(128, 128, 128, 0.1)',
+                                                                   'marginBottom': '20px'}),
+                    html.Label('Standard to display', style={'marginBottom': '10px'}),
+                    dcc.Dropdown(
+                        id='molecule-dropdown',
+                        options=[{'label': i, 'value': i} for i in df_standards['name'].unique()],
+                        value=df_standards['name'].unique()[0],
+                        style={'width': '200px'}
+                    ),
+
                     dcc.Graph(id='lcms-plot', style={'height': '800px', 'marginBottom': '10px'})
                 ], style={'border': '1px solid grey', 'border-radius': '8px', 'padding': '10px',
                           'marginBottom': '10px'}),
             ], width=6)
         ], style={'marginTop': '10px'})
+
+
     elif tab_value == 'ms2':
         return html.Div([
             dbc.Row([
@@ -369,21 +412,21 @@ def render_tab(tab_value):
                     html.Div([
                         html.Button('Update Plots', id='update-button', n_clicks=0)
                     ]),
-                ], width=6),
+                ], width=2),
 
                 dbc.Col([
                     html.Div([
-                        html.Div("Plot 1 Placeholder", style={'textAlign': 'center', 'padding': '5px',
+                        html.Div("MS2 spectra and unique precursor mz counts", style={'textAlign': 'center', 'padding': '5px',
                                                               'backgroundColor': 'rgba(128, 128, 128, 0.1)'}),
                         dcc.Loading(
                             id="loading",
                             type="circle",
                             children=[
-                                dcc.Graph(id='ms2-plot1', style={'height': '400px', 'marginBottom': '10px'})
+                                dcc.Graph(id='ms2-scan-counts', style={'height': '600px', 'marginBottom': '10px'})
                             ])
                     ], style={'border': '1px solid grey', 'border-radius': '8px', 'padding': '10px',
                               'marginBottom': '10px'}),
-                ], width=6),
+                ], width=10),
             ], style={'marginTop': '10px'}),
 
             dbc.Row([
@@ -393,14 +436,16 @@ def render_tab(tab_value):
                                                               'backgroundColor': 'rgba(128, 128, 128, 0.1)',
                                                               'marginBottom': '5px'}),
                         dbc.Row([
-                            dbc.Col(
+                            dbc.Col([
+                                html.Label('Select mzML file'),
                                 dcc.Dropdown(
                                     id='mzml-file-dropdown',
                                     options=[{'label': i, 'value': i} for i in mzml_list],
                                     value=mzml_list[0],
-                                    persistence=True),
+                                    persistence=True)],
                                 width=4),
                             dbc.Col([
+                                html.Label('Select x-axis variable'),
                                 dcc.Dropdown(
                                     id='MS2-map-x-dropdown',
                                     options=[{'label': i, 'value': i} for i in ms_scan_variables],
@@ -416,6 +461,7 @@ def render_tab(tab_value):
                                 )
                             ], width=4),
                             dbc.Col([
+                                html.Label('Select y-axis variable'),
                                 dcc.Dropdown(
                                     id='MS2-map-y-dropdown',
                                     options=[{'label': i, 'value': i} for i in ms_scan_variables],
@@ -446,13 +492,13 @@ def render_tab(tab_value):
             dbc.Row([
                 dbc.Col([
                     html.Div([
-                        html.Div("Total ion chromatograms", style={'textAlign': 'center', 'padding': '5px',
+                        html.Div("Total ion chromatogram (TIC)", style={'textAlign': 'center', 'padding': '5px',
                                                           'backgroundColor': 'rgba(128, 128, 128, 0.1)'}),
                         dcc.Loading(
                             id="loading",
                             type="circle",
                             children=[
-                                dcc.Graph(id='tic-plot', style={'height': '800px', 'marginBottom': '10px'})])
+                                dcc.Graph(id='tic-plot', style={'height': '600px', 'marginBottom': '10px'})])
                     ], style={'border': '1px solid grey', 'border-radius': '8px', 'padding': '10px',
                               'marginBottom': '10px'}),
                 ], width=12),  # This makes it span the entire width
@@ -474,25 +520,87 @@ def render_tab(tab_value):
                             id="loading",
                             type="circle",
                             children=[
-                                dcc.Graph(id='tic-stats_plot', style={'height': '800px', 'marginBottom': '10px'})])
+                                dcc.Graph(id='tic-stats_plot', style={'height': '600px', 'marginBottom': '10px'})])
                     ], style={'border': '1px solid grey', 'border-radius': '8px', 'padding': '10px',
                               'marginBottom': '10px'}),
                 ], width=6),
 
                 dbc.Col([
                     html.Div([
-                        html.Div("PCA Plot", style={'textAlign': 'center', 'padding': '5px',
+                        html.Div("TIC PCA (TIC binned in 3s intervals)", style={'textAlign': 'center', 'padding': '5px',
                                                     'backgroundColor': 'rgba(128, 128, 128, 0.1)'}),
                         dcc.Loading(
                             id="loading-pca",
                             type="circle",
                             children=[
-                                dcc.Graph(id='pca-plot', style={'height': '800px', 'marginBottom': '10px'})])
+                                dcc.Graph(id='pca-plot', style={'height': '600px', 'marginBottom': '10px'})])
                     ], style={'border': '1px solid grey', 'border-radius': '8px', 'padding': '10px',
                               'marginBottom': '10px'}),
                 ], width=6),
             ]),
         ])
+
+
+
+@app.callback(
+    Output('ms2-scan-counts', 'figure'),
+    [Input('mzml-checklist', 'value')]
+)
+def update_barplot(selected_mzml):
+
+
+
+    df = ms2_inv[ms2_inv['mzml_file'].isin(selected_mzml)].copy()
+    df['date_time'] = pd.to_datetime(df['date_time'])
+    df = df.sort_values(by='date_time')
+    df['order'] = range(1, len(df) + 1)
+
+    # Create the bar plot
+    fig = go.Figure()
+
+    fig.add_trace(go.Bar(
+        x=df['order'],
+        y=df['MS2_spectra'],
+        name='MS2_spectra',
+        hovertemplate=(
+            "Order: %{x}<br>"
+            "MS2_spectra: %{y}<br>"
+            "mzml_file: %{customdata[0]}<br>"
+            "Median fragment count: %{customdata[1]}"
+        ),
+        customdata=df[['mzml_file', 'Median_filtered_Peak_count']].values
+    ))
+
+    fig.add_trace(go.Bar(
+        x=df['order'],
+        y=df['Unique_prec_MZ'],
+        name='Unique_prec_MZ',
+        hovertemplate=(
+            "Order: %{x}<br>"
+            "MS2_spectra: %{y}<br>"
+            "mzml_file: %{customdata[0]}<br>"
+            "Median fragment count: %{customdata[1]}"
+        ),
+        customdata=df[['mzml_file', 'Median_filtered_Peak_count']].values
+    ))
+
+    fig.update_layout(
+        height=600,
+        barmode='group',
+        xaxis=dict(
+            showline=True,
+            showgrid=False
+        ),
+        yaxis=dict(
+            title="Counts"
+        ),
+        xaxis_title="Injection order"
+    )
+
+    return fig
+
+
+
 
 
 @app.callback(
@@ -502,8 +610,90 @@ def render_tab(tab_value):
 
 def create_pca_plot(selected_mzml):
     filtered_ms1_tic = ms1_tic[ms1_tic['mzml_file'].isin(selected_mzml)].copy()
-    pca_data = prepare_pca_data(filtered_ms1_tic)
-    fig = px.scatter(pca_data, x='PC1', y='PC2', color='mzml_file')
+    pca_data, loadings_df = prepare_pca_data(filtered_ms1_tic)
+
+
+    # print(loadings_df.head())
+    #
+    # rt_bin = np.array([float(x) for x in loadings_df.columns])
+    # correlation_coeffs = {}
+    #
+    # # Calculate absolute values
+    # abs_loadings_df = loadings_df.abs()
+    #
+    # # Loop through each PC to find the correlation
+    # for pc in abs_loadings_df.index:
+    #     corr_coef = np.corrcoef(rt_bin, abs_loadings_df.loc[pc])[0, 1]
+    #     correlation_coeffs[pc] = corr_coef
+    #
+    # # Convert to a pandas Series for easier display
+    # correlation_coeffs_series = pd.Series(correlation_coeffs)
+    #
+    # print(correlation_coeffs_series)
+    #
+    #
+    # outliers_dict = {}
+    #
+    # # Define Z-score threshold for identifying outliers; typically values >= 2 are considered outliers
+    # z_threshold = 1.2
+    #
+    # for index, row in loadings_df.iterrows():
+    #     z_scores = np.abs((row - row.mean()) / row.std())
+    #     outliers = row[z_scores >= z_threshold]
+    #     outliers_dict[index] = outliers
+    #
+    # # Convert outliers_dict to DataFrame(s)
+    # outliers_dfs = {key: pd.DataFrame(value).T for key, value in outliers_dict.items()}
+
+    #print(outliers_dfs)
+
+    unique_dates = pca_data['datetime_order'].unique()
+    unique_dates.sort()
+
+    color_map = plt.cm.viridis
+    fig = go.Figure()
+
+    # Prepare the array for the sample order
+    order_array = np.array(sorted(pca_data['datetime_order'].unique()))
+
+    correlation_coeffs_order = {}
+
+    # Loop through each available PC to find the correlation
+    for pc in pca_data.columns:
+        if "PC" in pc:
+            corr_coef = np.corrcoef(order_array, pca_data.groupby('datetime_order')[pc].mean())[0, 1]
+            correlation_coeffs_order[pc] = corr_coef
+
+    # Convert to a pandas Series for easier display
+    correlation_coeffs_order_series = pd.Series(correlation_coeffs_order)
+
+    print(correlation_coeffs_order_series)
+
+    for order in sorted(pca_data['datetime_order'].unique()):
+        single_order_df = pca_data[pca_data['datetime_order'] == order]
+
+        # Normalize 'order' to [0, 1] range for colormap
+        normalized_order = (order - 1) / (len(unique_dates) - 1)
+        color_value = [int(x * 255) for x in color_map(normalized_order)[:3]]
+
+        color_str = f'rgb({color_value[0]}, {color_value[1]}, {color_value[2]})'
+
+        pc1_col = next(col for col in single_order_df.columns if re.match(r'PC1 \(.*\)', col))
+        pc2_col = next(col for col in single_order_df.columns if re.match(r'PC2 \(.*\)', col))
+
+        fig.add_trace(
+            go.Scatter(x=single_order_df[pc1_col], y=single_order_df[pc2_col],
+                       mode='markers',
+                       marker=dict(
+                           color=color_str,
+                       ),
+                       name=f"{order}: {single_order_df['mzml_file'].iloc[0]}",
+                       customdata=single_order_df['mzml_file'],
+                       hovertemplate="%{customdata}<br>PC1: %{x}<br>PC2: %{y}")
+        )
+
+    fig.update_layout(height=600, xaxis_title=pc1_col, yaxis_title=pc2_col)
+
     return fig
 
 
@@ -538,15 +728,16 @@ def TIC_stats_plot(selected_mzml, relative_to_median_checkbox_value):
                        hovertemplate="%{customdata}<br>Date Time: %{x}<br>Log10 Value: %{y}")
         )
 
-    fig.update_layout(height=400, xaxis_title='Date Time', yaxis_title=y_axis_title)
+    fig.update_layout(height=600, xaxis_title='Date Time', yaxis_title=y_axis_title)
 
     return fig
 
 @app.callback(
     Output('tic-plot', 'figure'),
-    Input('mzml-checklist', 'value')
+    Input('mzml-checklist', 'value'),
+    Input('pca-plot', 'clickData')
 )
-def TIC_plot(selected_mzml):
+def TIC_plot(selected_mzml, clickData):
 
     filtered_ms1_tic = ms1_tic[ms1_tic['mzml_file'].isin(selected_mzml)].copy()
 
@@ -559,6 +750,11 @@ def TIC_plot(selected_mzml):
 
     color_map = plt.cm.viridis
 
+    clicked_mzml = None
+    if clickData is not None:
+        clicked_mzml = clickData['points'][0]['customdata']
+
+    clicked_trace = None
     tic_fig = go.Figure()
 
     for order in sorted(filtered_ms1_tic['order'].unique()):
@@ -566,9 +762,26 @@ def TIC_plot(selected_mzml):
 
         # Normalize 'order' to [0, 1] range for colormap
         normalized_order = (order - 1) / (len(unique_dates) - 1)
-        color_value = [int(x * 255) for x in color_map(normalized_order)[:3]]
 
-        color_str = f'rgb({color_value[0]}, {color_value[1]}, {color_value[2]})'
+        if clicked_mzml and clicked_mzml == single_order_df['mzml_file'].iloc[0]:
+            color_value = [255, 0, 0]  # Set to red if clicked
+            color_str = f'rgb({color_value[0]}, {color_value[1]}, {color_value[2]})'
+            opacity_value = 1
+            clicked_trace = go.Scatter(x=single_order_df['rt'], y=single_order_df['intensity'],
+                                       mode='lines',
+                                       line=dict(color=color_str),
+                                       opacity=opacity_value,
+                                       name=f"{order}: {single_order_df['mzml_file'].iloc[0]}",
+                                       customdata=single_order_df['mzml_file'],
+                                       hovertemplate="%{customdata}<br>Intensity: %{y}")
+            continue
+        else:
+            color_value = [int(x * 255) for x in color_map(normalized_order)[:3]]
+            color_str = f'rgb({color_value[0]}, {color_value[1]}, {color_value[2]})'
+            if clicked_mzml:
+                opacity_value = 0.5
+            else:
+                opacity_value = 0.7
 
         single_order_df = single_order_df.copy()
         single_order_df['date_time'] = pd.to_datetime(single_order_df['date_time'])
@@ -579,12 +792,17 @@ def TIC_plot(selected_mzml):
                        line=dict(
                            color=color_str,
                        ),
-                       name=f"Injection {order}",
+                       opacity=opacity_value,
+                       name=f"{order}: {single_order_df['mzml_file'].iloc[0]}",
                        customdata=single_order_df['mzml_file'],
                        hovertemplate="%{customdata}<br>Intensity: %{y}")
         )
 
-    tic_fig.update_layout(height=800, xaxis_title='Retention Time', yaxis_title='Intensity')
+    if clicked_trace:
+        tic_fig.add_trace(clicked_trace)
+
+    tic_fig.update_layout(height=600, xaxis_title='Retention Time', yaxis_title='Intensity')
+
 
 
     return tic_fig
@@ -600,7 +818,7 @@ def TIC_plot(selected_mzml):
 #     return [{'label': f"{i} {'(Not in Set)' if i not in available_files else ''}", 'value': i} for i in mzml_list]
 def update_mzml_checklist(selected_set):
     # Sort mzml_list based on time_of_upload
-    df_sorted = df_standards.sort_values('date_time')
+    df_sorted = ms1_inv.sort_values('date_time')
     mzml_list_sorted = df_sorted['mzml_file'].unique().tolist()
     #available_files = df_standards[df_standards['collection'] == selected_set]['mzml_file'].unique().tolist()
 
@@ -730,9 +948,11 @@ def make_MS2_map(df_input, selected_mzml, plot_x, plot_y, log_x, log_y, peak_cou
 
     df = df_input.copy()
 
+    df = df[df['mzml_file'] == selected_mzml]
+
     df = assign_MS2_groups(df, peak_count_threshold, purity_threshold, intensity_ratio_threshold, collision_energy_ratio)
 
-    df = df[df['mzml_file'] == selected_mzml]
+
 
     if plot_x in 'Apex/Precursor intensity' or plot_y in 'Apex/Precursor intensity':
         df['Apex/Precursor intensity'] = df.apply(

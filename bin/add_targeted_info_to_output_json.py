@@ -38,6 +38,13 @@ if __name__ == "__main__":
         output_json = json.load(file)
 
     std_sets = args.std_sets.split(",")
+
+    if len(std_sets) == 1 and os.path.splitext(os.path.basename(std_sets[0]))[0] == 'set_none':
+        with open('mzml_summary.json', 'w') as file:
+            json.dump(output_json, file, indent=4)
+        
+        exit()
+
     std_sets_tsvs = args.std_sets_tsvs.split(",")
 
     for featureXML_path, tsv_path in zip(std_sets, std_sets_tsvs):

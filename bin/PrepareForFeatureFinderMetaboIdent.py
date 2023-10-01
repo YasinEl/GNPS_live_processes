@@ -2,7 +2,7 @@ import pandas as pd
 import json
 import argparse
 from formula_validation.Formula import Formula 
-
+from io import StringIO
 
 def get_openms_featurefindermetaboident_formulas(row):
     adduct = row['adduct']
@@ -26,7 +26,7 @@ if __name__ == '__main__':
 
     with open(args.parameter_json, 'r') as f:
         json_data = json.load(f)
-        parameter_dict = {key: pd.read_json(value) for key, value in json_data.items()}
+        parameter_dict = {key: pd.read_json(StringIO(value)) for key, value in json_data.items()}
 
     df_standards = parameter_dict['df_standards']
 
@@ -39,30 +39,37 @@ if __name__ == '__main__':
     'mz': 'Mass'
     }
 
-    df_STD_openms = df_standards.copy()
-
-    df_STD_openms['openms_formula'] = df_STD_openms.apply(get_openms_featurefindermetaboident_formulas, axis=1)
-    
-    df_STD_openms.rename(columns=column_rename_map, inplace=True)
-    df_STD_openms = df_STD_openms[['set', 'CompoundName', 'SumFormula', 'Charge', 'RetentionTime', 'Mass']]
-
-    df_STD_openms['Mass'] = 0
-    df_STD_openms['RetentionTimeRange'] = 0
-    df_STD_openms['IsoDistribution'] = 0
-
-    # Desired order of columns
-    column_order = ['set', 'CompoundName', 'SumFormula', 'Mass', 'Charge', 'RetentionTime', 'RetentionTimeRange', 'IsoDistribution']
-
-    # Reordering the columns
-    df_STD_openms = df_STD_openms[column_order]
-  
-    # Grouping by 'set' and iterating over each group
-    for set_val, group in df_STD_openms.groupby('set'):
-        # Dropping the 'set' column
-        group_without_set = group.drop('set', axis=1)
+    if len(df_standards) > 0:
         
-        # Saving to .tsv
-        filename = f"set_{set_val}.tsv"
-        group_without_set.to_csv(filename, sep='\t', index=False)
+        df_STD_openms = df_standards.copy()
+
+        df_STD_openms['openms_formula'] = df_STD_openms.apply(get_openms_featurefindermetaboident_formulas, axis=1)
+        
+        df_STD_openms.rename(columns=column_rename_map, inplace=True)
+        df_STD_openms = df_STD_openms[['set', 'CompoundName', 'SumFormula', 'Charge', 'RetentionTime', 'Mass']]
+
+        df_STD_openms['Mass'] = 0
+        df_STD_openms['RetentionTimeRange'] = 0
+        df_STD_openms['IsoDistribution'] = 0
+
+        # Desired order of columns
+        column_order = ['set', 'CompoundName', 'SumFormula', 'Mass', 'Charge', 'RetentionTime', 'RetentionTimeRange', 'IsoDistribution']
+
+        # Reordering the columns
+        df_STD_openms = df_STD_openms[column_order]
+  
+        # Grouping by 'set' and iterating over each group
+        for set_val, group in df_STD_openms.groupby('set'):
+            # Dropping the 'set' column
+            group_without_set = group.drop('set', axis=1)
+            
+            # Saving to .tsv
+            filename = f"set_{set_val}.tsv"
+            group_without_set.to_csv(filename, sep='\t', index=False)
+    else:
+        filename = "set_none.tsv"
+        df_STD_openms = pd.DataFrame(columns=['no standards'])
+        df_STD_openms.to_csv(filename, sep='\t', index=False)
+
 
 

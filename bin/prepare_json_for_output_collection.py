@@ -2,6 +2,7 @@ import argparse
 import json
 import os
 from datetime import datetime
+import re
 
 def valid_datetime(s):
     try:
@@ -9,7 +10,18 @@ def valid_datetime(s):
     except ValueError:
         raise argparse.ArgumentTypeError(f"Not a valid date-time: '{s}'.")
 
-
+def extract_timestamp(file_path):
+    pattern = r'startTimeStamp="([\d\-\:T]+)Z"'
+    with open(file_path, 'r') as f:
+        for i, line in enumerate(f):
+            if i >= 500:
+                break
+            match = re.search(pattern, line)
+            if match:
+                timestamp_str = match.group(1)
+                dt = datetime.strptime(timestamp_str, '%Y-%m-%dT%H:%M:%S')
+                return dt.strftime('%Y-%m-%d %H:%M:%S')
+    return ''
 
 def main():
     parser = argparse.ArgumentParser(description="Prepare a json for collecting GNPS outputs and add mzml file name.")
@@ -20,8 +32,10 @@ def main():
 
     timestamp = args.datetime.strftime('%Y-%m-%d %H:%M:%S')
 
-    
-    timestamp = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+    timestamp = extract_timestamp(args.filename)
+
+    if timestamp == '':
+        timestamp = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
         
     base_name = os.path.basename(args.filename)
     
