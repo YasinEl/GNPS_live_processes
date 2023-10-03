@@ -6,6 +6,8 @@ import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 import matplotlib.pyplot as plt
 import seaborn as sns
+from matplotlib.colors import TwoSlopeNorm
+import matplotlib.cm as cm
 from plotly.colors import find_intermediate_color
 import plotly.express as px
 from plotly.express.colors import sample_colorscale
@@ -122,9 +124,9 @@ def assign_MS2_groups(df_input, peak_count_threshold, purity_threshold, intensit
 
     return df
 
-
-def prepare_pca_data(df):
+def prepare_correlation_analysis(df):
     df['rt_bin'] = (df['rt'] // 3) * 3
+    df['rt_bin'] = df['rt_bin'].astype(int)
     df_grouped = df.groupby(['mzml_file', 'rt_bin']).agg({'intensity': 'mean'}).reset_index()
 
     all_bins = df_grouped['rt_bin'].unique()
@@ -137,48 +139,85 @@ def prepare_pca_data(df):
         for b in missing_bins:
             fill_rows.append([f, b, 0])
 
+
     df_fill = pd.DataFrame(fill_rows, columns=['mzml_file', 'rt_bin', 'intensity'])
     df_filled = pd.concat([df_grouped, df_fill], ignore_index=True)
 
-    X = df_filled.pivot(index='mzml_file', columns='rt_bin', values='intensity').fillna(0)
+    date_time_mapping = df.groupby('mzml_file')['date_time'].first()
+    df_filled['date_time'] = df_filled['mzml_file'].map(date_time_mapping)
+    df_filled.sort_values(by='date_time', inplace=True)
+    df_filled['datetime_order'] = df_filled['date_time'].rank(method='min').astype(int)
 
-    # Scaling and centering the data
+    return df_filled
+
+def prepare_pca_data(df, intensity_column = 'TIC_intensity_complete'):
+
+    df['rt_bin'] = (df['rt'] // 3) * 3
+    df['rt_bin'] = df['rt_bin'].astype(int)
+
+    df_grouped = df.groupby(['mzml_file', 'rt_bin']).agg({intensity_column: 'mean'}).reset_index()
+
+    all_bins = df_grouped['rt_bin'].unique()
+    all_files = df_grouped['mzml_file'].unique()
+
+    fill_rows = []
+    for f in all_files:
+        existing_bins = set(df_grouped[df_grouped['mzml_file'] == f]['rt_bin'])
+        missing_bins = set(all_bins) - existing_bins
+        for b in missing_bins:
+            fill_rows.append([f, b, 0])
+
+
+
+    df_fill = pd.DataFrame(fill_rows, columns=['mzml_file', 'rt_bin', intensity_column])
+    df_filled = pd.concat([df_grouped, df_fill], ignore_index=True)
+
+
+
+    X = df_filled.pivot(index='mzml_file', columns='rt_bin', values=intensity_column).fillna(0)
+
     scaler = StandardScaler()
     X_scaled = scaler.fit_transform(X)
 
+
     pca = PCA()
     pca.fit(X_scaled)
-    cumulative_variance = np.cumsum(pca.explained_variance_ratio_)
-    n_pcs = np.where(cumulative_variance >= 0.95)[0][0] + 1
+    n_pcs = np.where(np.cumsum(pca.explained_variance_ratio_) >= 0.95)[0][0] + 1
 
     pca = PCA(n_components=n_pcs)
     principalComponents = pca.fit_transform(X_scaled)
 
-    # Get explained variance ratio for each component
     explained_variance_ratio = pca.explained_variance_ratio_
 
-
-
-
-    # Get loadings
-    loadings = pca.components_
-
-    # Create loadings DataFrame
-    loadings_df = pd.DataFrame(loadings, columns=X.columns, index=[f'PC{i + 1}' for i in range(loadings.shape[0])])
-
-    # Create final DataFrame with explained variance in brackets
-    finalDf = pd.DataFrame(data=principalComponents,
-                           columns=[f'PC{i + 1} ({explained_variance_ratio[i]:.2f})' for i in range(n_pcs)])
+    finalDf = pd.DataFrame(principalComponents,
+                           columns=[f'PC{i + 1}' for i in range(n_pcs)])
     finalDf['mzml_file'] = X.index
 
-    # Add date_time and order by date_time
     date_time_mapping = df.groupby('mzml_file')['date_time'].first()
     finalDf['date_time'] = finalDf['mzml_file'].map(date_time_mapping)
-    finalDf['date_time'] = pd.to_datetime(finalDf['date_time'])
     finalDf.sort_values(by='date_time', inplace=True)
-    finalDf['datetime_order'] = range(1, len(finalDf) + 1)
+    #finalDf['datetime_order'] = np.arange(1, len(finalDf) + 1)
+    finalDf['datetime_order'] = finalDf['date_time'].rank(method='min').astype(int)
 
-    return finalDf, loadings_df
+    order_array = np.array(sorted(finalDf['datetime_order'].unique()))
+
+    correlation_coeffs_order = {}
+    for pc in finalDf.columns:
+        if "PC" in pc:
+            corr_coef = np.corrcoef(order_array, finalDf.groupby('datetime_order')[pc].mean())[0, 1]
+            correlation_coeffs_order[pc] = corr_coef
+            finalDf.rename(columns={
+                pc: f"{pc} ({explained_variance_ratio[int(pc[2:]) - 1]:.2f}; injection order r: {corr_coef:.2f})"},
+                           inplace=True)
+
+    top_2_pcs = sorted(correlation_coeffs_order, key=lambda x: abs(correlation_coeffs_order[x]), reverse=True)[:2]
+
+    loadings_df = pd.DataFrame(pca.components_, columns=X.columns,
+                               index=[f'PC{i + 1}' for i in range(n_pcs)])
+
+
+    return finalDf, loadings_df, top_2_pcs
+
 
 # Initialize app
 app = dash.Dash(__name__, suppress_callback_exceptions=True, external_stylesheets=[dbc.themes.FLATLY])
@@ -191,13 +230,22 @@ ms1_inv = create_filtered_table("C:/Users/elabi/Downloads/mzml_summary_aggregati
 ms1_tic = create_filtered_table("C:/Users/elabi/Downloads/mzml_summary_aggregation.json",  collection="MS1_inventory", include_keys = 'MS1_inventory')
 ms2_inv = create_filtered_table("C:/Users/elabi/Downloads/mzml_summary_aggregation.json",  collection="MS2_inventory")
 ms2_scans = create_filtered_table("C:/Users/elabi/Downloads/mzml_summary_aggregation.json",  collection="MS2_inventory", include_keys = 'MS2_inventory')
-
-
+ms1_tic_bins = create_filtered_table("C:/Users/elabi/Downloads/mzml_summary_aggregation.json",  collection="MS1_inventory", include_keys = 'TIC_bins')
 
 #get the lists of options for dropdowns etc
 mzml_list = ms1_inv['mzml_file'].unique().tolist()
+df_sorted = ms1_inv.sort_values('date_time')
+mzml_list_sorted = df_sorted['mzml_file'].unique().tolist()
 
-print(mzml_list)
+ms1_tic_bins = ms1_tic_bins[ms1_tic_bins['mzml_file'] == mzml_list[0]]
+
+ms1_tic_bins = ms1_tic_bins[['TIC_bins']]
+ms1_tic_bins['bin_id'] = range(1, len(ms1_tic_bins) + 1)
+
+# Create sorted and labeled options
+sorted_options = [{'label': f"{i + 1}: {filename}", 'value': filename} for i, filename in enumerate(mzml_list_sorted)]
+
+
 
 ms_scan_variables = ['Retention Time (min)', 'Precursor m/z', 'Collision energy',
        'Precursor charge', 'Max fragment intensity', 'Precursor intensity',
@@ -225,12 +273,22 @@ app.layout = html.Div([
             dbc.Card([
                 dbc.CardHeader("Uploaded files"),
                 dbc.CardBody([
-                    dcc.Checklist(id='mzml-checklist',
-                                  options=[{'label': i, 'value': i} for i in mzml_list],
-                                  value=mzml_list,
-                                  style={'overflow': 'auto', 'height': '800px', 'white-space': 'nowrap'}),
+                    html.Div([
+                        dcc.Input(id='text-field', type='text', style={'width': '100%'}),
+                    ]),
+                    html.Div([
+                        html.Button('Select', id='select-mzmls-button', style={'display': 'inline-block'}),
+                        html.Button('Unselect', id='unselect-mzmls-button', style={'display': 'inline-block'}),
+                    ], style={'width': '100%'}),
+                    html.Div([
+                        dcc.Checklist(id='mzml-checklist',
+                                      options=sorted_options,#[{'label': i, 'value': i} for i in mzml_list],
+                                      value=mzml_list,
+                                      style={'overflow': 'auto', 'height': '800px', 'white-space': 'nowrap'}),
+                    ], style={'width': '100%'}),
                 ])
-            ]),
+            ])
+            ,
             width=2),
         dbc.Col([
             dbc.Tabs([
@@ -242,9 +300,21 @@ app.layout = html.Div([
         ], width=10),
     ]),
     dcc.Store(id='store-df'),
+    dcc.Store(id='pca-df'),
+    dcc.Store(id='intermediate-value'),
 ])
 
 
+@app.callback(
+    Output('intermediate-value', 'data'),  # You can use a hidden Div to store intermediate values
+    Input('mzml-checklist', 'value')
+)
+def start_lazy_callbacks(selected_mzml):
+    # Perform some operation
+    if selected_mzml is not None:
+        processed_value = ",".join(selected_mzml)  # Just an example operation
+        return processed_value
+    return None
 
 
 @app.callback(
@@ -296,7 +366,11 @@ def update_lcms_plot(selected_mzml, selected_molecule):
                        hovertemplate="%{customdata}<br>Intensity: %{y}")
         )
 
-    lcms_fig.update_layout(height=800, xaxis_title='Retention Time', yaxis_title='Intensity')
+    lcms_fig.update_layout(height=800,
+                           xaxis_title='Retention Time',
+                           yaxis_title='Intensity',
+                           yaxis=dict(exponentformat='E')
+                           )
 
     return lcms_fig
 
@@ -541,14 +615,49 @@ def render_tab(tab_value):
         ])
 
 
+from dash import Input, Output, State
+
+
+@app.callback(
+    Output('mzml-checklist', 'value'),
+    [Input('select-mzmls-button', 'n_clicks'),
+     Input('unselect-mzmls-button', 'n_clicks')],
+    [State('text-field', 'value'),
+     State('mzml-checklist', 'value')]
+)
+def update_checklist(select_clicks, unselect_clicks, text_value, selected_mzmls):
+    ctx = dash.callback_context
+
+    if not ctx.triggered_id or selected_mzmls is None:
+        raise dash.exceptions.PreventUpdate
+
+    new_selected_mzmls = set(selected_mzmls)
+
+    if text_value is None:
+        if 'select-mzmls-button' == ctx.triggered_id:
+            return mzml_list
+        elif 'unselect-mzmls-button' == ctx.triggered_id:
+            return []
+
+    for mzml in mzml_list:
+        if text_value.lower() in mzml.lower():
+            if 'unselect-mzmls-button' == ctx.triggered_id:
+                new_selected_mzmls.discard(mzml)
+            elif 'select-mzmls-button' ==  ctx.triggered_id:
+                new_selected_mzmls.add(mzml)
+
+    return list(new_selected_mzmls)
+
+
+
+
+
 
 @app.callback(
     Output('ms2-scan-counts', 'figure'),
     [Input('mzml-checklist', 'value')]
 )
 def update_barplot(selected_mzml):
-
-
 
     df = ms2_inv[ms2_inv['mzml_file'].isin(selected_mzml)].copy()
     df['date_time'] = pd.to_datetime(df['date_time'])
@@ -601,100 +710,83 @@ def update_barplot(selected_mzml):
 
 
 
+@app.callback(
+    Output('pca-df', 'data'),
+    Input('mzml-checklist', 'value'),
+    Input('intermediate-value', 'data')
+)
+def update_pca_dataframes(selected_mzml, make_sure_to_start):
+    filtered_ms1_tic = ms1_tic[ms1_tic['mzml_file'].isin(selected_mzml)].copy()
+
+    return_dict = {}
+
+    for col in filtered_ms1_tic.columns:
+        if 'TIC_intensity' in col:
+            pca_data, loadings_df, top_2_pcs = prepare_pca_data(filtered_ms1_tic, intensity_column=col)
+
+            suffix = col.split('_')[-1]  # Gets the last part after '_' which will be 'complete', '1', '2', etc.
+
+            return_dict[f'pca_data_{suffix}'] = pca_data.to_json()
+            return_dict[f'loadings_df_{suffix}'] = loadings_df.to_json()
+            return_dict[f'top_2_pcs_{suffix}'] = top_2_pcs
+
+    return json.dumps(return_dict)
+
+
 
 
 @app.callback(
     Output('pca-plot', 'figure'),
-    Input('mzml-checklist', 'value')
+    Input('pca-df', 'data')
 )
 
-def create_pca_plot(selected_mzml):
-    filtered_ms1_tic = ms1_tic[ms1_tic['mzml_file'].isin(selected_mzml)].copy()
-    pca_data, loadings_df = prepare_pca_data(filtered_ms1_tic)
+def create_pca_plot(data):
+
+    if data is not None:
+
+        data_dict = json.loads(data)
+
+        # Convert JSON strings back to pandas DataFrames
+        pca_data = pd.read_json(data_dict['pca_data_complete'])
+        loadings_df = pd.read_json(data_dict['loadings_df_complete'])
+        top_2_pcs = data_dict['top_2_pcs_complete']
 
 
-    # print(loadings_df.head())
-    #
-    # rt_bin = np.array([float(x) for x in loadings_df.columns])
-    # correlation_coeffs = {}
-    #
-    # # Calculate absolute values
-    # abs_loadings_df = loadings_df.abs()
-    #
-    # # Loop through each PC to find the correlation
-    # for pc in abs_loadings_df.index:
-    #     corr_coef = np.corrcoef(rt_bin, abs_loadings_df.loc[pc])[0, 1]
-    #     correlation_coeffs[pc] = corr_coef
-    #
-    # # Convert to a pandas Series for easier display
-    # correlation_coeffs_series = pd.Series(correlation_coeffs)
-    #
-    # print(correlation_coeffs_series)
-    #
-    #
-    # outliers_dict = {}
-    #
-    # # Define Z-score threshold for identifying outliers; typically values >= 2 are considered outliers
-    # z_threshold = 1.2
-    #
-    # for index, row in loadings_df.iterrows():
-    #     z_scores = np.abs((row - row.mean()) / row.std())
-    #     outliers = row[z_scores >= z_threshold]
-    #     outliers_dict[index] = outliers
-    #
-    # # Convert outliers_dict to DataFrame(s)
-    # outliers_dfs = {key: pd.DataFrame(value).T for key, value in outliers_dict.items()}
+        unique_dates = pca_data['datetime_order'].unique()
+        unique_dates.sort()
 
-    #print(outliers_dfs)
+        color_map = plt.cm.viridis
 
-    unique_dates = pca_data['datetime_order'].unique()
-    unique_dates.sort()
+        fig = go.Figure()
 
-    color_map = plt.cm.viridis
-    fig = go.Figure()
+        # Find renamed columns for top 2 PCs
+        renamed_pc1_col = next(col for col in pca_data.columns if top_2_pcs[0] in col)
+        renamed_pc2_col = next(col for col in pca_data.columns if top_2_pcs[1] in col)
 
-    # Prepare the array for the sample order
-    order_array = np.array(sorted(pca_data['datetime_order'].unique()))
+        for order in sorted(pca_data['datetime_order'].unique()):
+            single_order_df = pca_data[pca_data['datetime_order'] == order]
 
-    correlation_coeffs_order = {}
+            # Normalize 'order' to [0, 1] range for colormap
+            normalized_order = (order - 1) / (len(unique_dates) - 1)
+            color_value = [int(x * 255) for x in color_map(normalized_order)[:3]]
 
-    # Loop through each available PC to find the correlation
-    for pc in pca_data.columns:
-        if "PC" in pc:
-            corr_coef = np.corrcoef(order_array, pca_data.groupby('datetime_order')[pc].mean())[0, 1]
-            correlation_coeffs_order[pc] = corr_coef
+            color_str = f'rgb({color_value[0]}, {color_value[1]}, {color_value[2]})'
 
-    # Convert to a pandas Series for easier display
-    correlation_coeffs_order_series = pd.Series(correlation_coeffs_order)
+            fig.add_trace(
+                go.Scatter(x=single_order_df[renamed_pc1_col], y=single_order_df[renamed_pc2_col],
+                           mode='markers',
+                           marker=dict(
+                               color=color_str,
+                           ),
+                           name=f"{order}: {single_order_df['mzml_file'].iloc[0]}",
+                           customdata=single_order_df['mzml_file'],
+                           hovertemplate="%{customdata}<br>PC1: %{x}<br>PC2: %{y}")
+            )
 
-    print(correlation_coeffs_order_series)
+        fig.update_layout(height=600, xaxis_title=renamed_pc1_col, yaxis_title=renamed_pc2_col)
 
-    for order in sorted(pca_data['datetime_order'].unique()):
-        single_order_df = pca_data[pca_data['datetime_order'] == order]
+        return fig
 
-        # Normalize 'order' to [0, 1] range for colormap
-        normalized_order = (order - 1) / (len(unique_dates) - 1)
-        color_value = [int(x * 255) for x in color_map(normalized_order)[:3]]
-
-        color_str = f'rgb({color_value[0]}, {color_value[1]}, {color_value[2]})'
-
-        pc1_col = next(col for col in single_order_df.columns if re.match(r'PC1 \(.*\)', col))
-        pc2_col = next(col for col in single_order_df.columns if re.match(r'PC2 \(.*\)', col))
-
-        fig.add_trace(
-            go.Scatter(x=single_order_df[pc1_col], y=single_order_df[pc2_col],
-                       mode='markers',
-                       marker=dict(
-                           color=color_str,
-                       ),
-                       name=f"{order}: {single_order_df['mzml_file'].iloc[0]}",
-                       customdata=single_order_df['mzml_file'],
-                       hovertemplate="%{customdata}<br>PC1: %{x}<br>PC2: %{y}")
-        )
-
-    fig.update_layout(height=600, xaxis_title=pc1_col, yaxis_title=pc2_col)
-
-    return fig
 
 
 @app.callback(
@@ -728,34 +820,66 @@ def TIC_stats_plot(selected_mzml, relative_to_median_checkbox_value):
                        hovertemplate="%{customdata}<br>Date Time: %{x}<br>Log10 Value: %{y}")
         )
 
-    fig.update_layout(height=600, xaxis_title='Date Time', yaxis_title=y_axis_title)
+    fig.update_layout(height=600,
+                      xaxis_title='Date Time',
+                      yaxis_title=y_axis_title,
+                      yaxis=dict(exponentformat='E'))
 
     return fig
 
 @app.callback(
     Output('tic-plot', 'figure'),
     Input('mzml-checklist', 'value'),
+    Input('pca-df', 'data'),
     Input('pca-plot', 'clickData')
 )
-def TIC_plot(selected_mzml, clickData):
+def TIC_plot(selected_mzml, pca_dfs, clickData):
+    if pca_dfs is None:
+        return go.Figure()
 
+    data_dict = json.loads(pca_dfs)
     filtered_ms1_tic = ms1_tic[ms1_tic['mzml_file'].isin(selected_mzml)].copy()
-
     unique_dates = filtered_ms1_tic['date_time'].unique()
     unique_dates.sort()
     date_order = {date: i + 1 for i, date in enumerate(unique_dates)}
-
-    filtered_ms1_tic = filtered_ms1_tic.copy()
     filtered_ms1_tic['order'] = filtered_ms1_tic['date_time'].map(date_order)
 
-    color_map = plt.cm.viridis
-
-    clicked_mzml = None
-    if clickData is not None:
-        clicked_mzml = clickData['points'][0]['customdata']
-
     clicked_trace = None
+    clicked_mzml = clickData['points'][0]['customdata'] if clickData else None
     tic_fig = go.Figure()
+    color_map = plt.cm.viridis
+    max_loading_index = max(
+        [int(key.split('_')[-1]) for key in data_dict.keys() if 'loadings_df_' in key and not key.endswith('complete')])
+    global_max_tic = filtered_ms1_tic['TIC_intensity_complete'].max()
+
+    norms = []
+    for i in range(1, max_loading_index + 1):
+        additional_loadings = pd.read_json(data_dict[f'loadings_df_{i}'])
+        pc_for_color = data_dict[f'top_2_pcs_{i}'][0]
+        pc_loadings = additional_loadings.loc[pc_for_color]
+        norm = TwoSlopeNorm(vmin=pc_loadings.min(), vmax=pc_loadings.max(), vcenter=0)
+
+        y0, y1 = ms1_tic_bins.loc[i - 1, 'TIC_bins']
+
+        y0_scaled = (y0 / global_max_tic) * global_max_tic
+        y1_scaled = (y1 / global_max_tic) * global_max_tic
+
+        print(y1)
+
+        for rt_bin, loading in pc_loadings.iteritems():
+            color_value = cm.RdBu_r(norm(loading))
+            color_value_rgb = [int(x * 255) for x in color_value[:3]]
+            tic_fig.add_shape(
+                type="rect",
+                x0=rt_bin,
+                x1=rt_bin + 3,
+                y0=y0_scaled,
+                y1=y1_scaled,
+                yref="y",
+                fillcolor=f"rgba({color_value_rgb[0]}, {color_value_rgb[1]}, {color_value_rgb[2]}, 0.7)",
+                line=dict(width=0),
+                layer="below"
+            )
 
     for order in sorted(filtered_ms1_tic['order'].unique()):
         single_order_df = filtered_ms1_tic[filtered_ms1_tic['order'] == order]
@@ -767,7 +891,7 @@ def TIC_plot(selected_mzml, clickData):
             color_value = [255, 0, 0]  # Set to red if clicked
             color_str = f'rgb({color_value[0]}, {color_value[1]}, {color_value[2]})'
             opacity_value = 1
-            clicked_trace = go.Scatter(x=single_order_df['rt'], y=single_order_df['intensity'],
+            clicked_trace = go.Scatter(x=single_order_df['rt'], y=single_order_df['TIC_intensity_complete'],
                                        mode='lines',
                                        line=dict(color=color_str),
                                        opacity=opacity_value,
@@ -787,7 +911,7 @@ def TIC_plot(selected_mzml, clickData):
         single_order_df['date_time'] = pd.to_datetime(single_order_df['date_time'])
 
         tic_fig.add_trace(
-            go.Scatter(x=single_order_df['rt'], y=single_order_df['intensity'],
+            go.Scatter(x=single_order_df['rt'], y=single_order_df['TIC_intensity_complete'],
                        mode='lines',
                        line=dict(
                            color=color_str,
@@ -801,7 +925,10 @@ def TIC_plot(selected_mzml, clickData):
     if clicked_trace:
         tic_fig.add_trace(clicked_trace)
 
-    tic_fig.update_layout(height=600, xaxis_title='Retention Time', yaxis_title='Intensity')
+    tic_fig.update_layout(height=600,
+                          xaxis_title='Retention Time',
+                          yaxis_title='Intensity',
+                          yaxis=dict(exponentformat='E'))
 
 
 
@@ -809,27 +936,21 @@ def TIC_plot(selected_mzml, clickData):
 
 
 
-@app.callback(
-    Output('mzml-checklist', 'options'),
-    Input('set-dropdown', 'value')
-)
+# @app.callback(
+#     Output('mzml-checklist', 'options'),
+#     Input('set-dropdown', 'value')
+# )
 # def update_mzml_checklist(selected_set):
-#     available_files = df[df['collection'] == selected_set]['mzml_file'].unique().tolist()
-#     return [{'label': f"{i} {'(Not in Set)' if i not in available_files else ''}", 'value': i} for i in mzml_list]
-def update_mzml_checklist(selected_set):
-    # Sort mzml_list based on time_of_upload
-    df_sorted = ms1_inv.sort_values('date_time')
-    mzml_list_sorted = df_sorted['mzml_file'].unique().tolist()
-    #available_files = df_standards[df_standards['collection'] == selected_set]['mzml_file'].unique().tolist()
-
-    sorted_options = []
-    for i, filename in enumerate(mzml_list_sorted):
-        label = f"{i + 1}: {filename}"
-        #if filename not in available_files:
-        #    label += " (Not in Set)"
-        sorted_options.append({'label': label, 'value': filename})
-
-    return sorted_options
+#     # Sort mzml_list based on time_of_upload
+#     df_sorted = ms1_inv.sort_values('date_time')
+#     mzml_list_sorted = df_sorted['mzml_file'].unique().tolist()
+#
+#     sorted_options = []
+#     for i, filename in enumerate(mzml_list_sorted):
+#         label = f"{i + 1}: {filename}"
+#         sorted_options.append({'label': label, 'value': filename})
+#
+#     return sorted_options
 
 @app.callback(
     Output('subplots', 'figure'),
@@ -904,7 +1025,8 @@ def update_plots(selected_mzml, selected_set, scale_option):
         height=800,
         legend_title_text='',
         legend=dict(x=0.5, xanchor='center', y=1.1, orientation='h'),
-        xaxis2=dict(title='Sample Injection Time')
+        xaxis2=dict(title='Sample Injection Time'),
+        yaxis=dict(exponentformat='E')
     )
 
     return fig

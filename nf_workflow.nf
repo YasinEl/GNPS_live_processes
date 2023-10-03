@@ -10,7 +10,8 @@ params.MS2ppm = 10
 params.timeOfUpload = '2023-09-21 13:45:30'
 TOOL_FOLDER = "$baseDir/bin"
 
-
+// still need to parallelize by mzml
+// need to ask for mz range as input parameter
 
 process CountMS2Scans {
     conda "$TOOL_FOLDER/requirements.yml"

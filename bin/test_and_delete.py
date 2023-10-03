@@ -1,67 +1,44 @@
-import json
-import pandas as pd
+from xml.etree import ElementTree as ET
 
-def create_filtered_table(json_file, name=None, type_=None, collection=None, include_keys=None):
-    with open(json_file, 'r') as f:
-        data = json.load(f)
+# Initialize variables to store sum and count for averaging
+sum_lower_limit = 0
+sum_upper_limit = 0
+count_lower_limit = 0
+count_upper_limit = 0
 
-    table_data = []
+# Load mzML file
+tree = ET.parse('/home/yasin/yasin/projects/GNPS_live_processes/random_data/agilent.mzML')
+root = tree.getroot()
+
+# Define namespace to navigate XML tree
+namespaces = {'ns': 'http://psi.hupo.org/ms/mzml'}
+
+# Iterate through each spectrum
+for spectrum in root.findall(".//ns:spectrum", namespaces=namespaces):
+    ms_level = spectrum.find(".//ns:cvParam[@accession='MS:1000511']", namespaces=namespaces)
     
-    for entry in data:
-        mzml_name = entry.get('mzml_name', None)
-        time_of_upload = entry.get('time_of_upload', None)
-        metrics = entry.get('metrics', [])
+    if ms_level is not None and ms_level.attrib['value'] == "1":
+        lower_limit = spectrum.find(".//ns:cvParam[@accession='MS:1000501']", namespaces=namespaces)
+        upper_limit = spectrum.find(".//ns:cvParam[@accession='MS:1000500']", namespaces=namespaces)
         
-        for metric in metrics:
-            metric_name = metric.get('name', None)
-            metric_type = metric.get('type', None)
-            metric_collection = metric.get('collection', None)
-            
-            if ((name is None or name == metric_name) and
-                (type_ is None or type_ == metric_type) and
-                (collection is None or collection == metric_collection)):
-                
-                row = {
-                    'mzml_file': mzml_name,
-                    'date_time': time_of_upload,
-                    'name': metric_name,
-                    'type': metric_type,
-                    'collection': metric_collection
-                }
+        if lower_limit is not None:
+            sum_lower_limit += float(lower_limit.attrib['value'])
+            count_lower_limit += 1
+        
+        if upper_limit is not None:
+            sum_upper_limit += float(upper_limit.attrib['value'])
+            count_upper_limit += 1
 
-                reports = metric.get('reports', {})
-                
-                for key, value in reports.items():
-                    if include_keys is None:
-                        if not isinstance(value, (list, dict)):
-                            row[key] = value
-                    else:
-                        if key in include_keys:
-                            if isinstance(value, dict):
-                                row.update(value)
-                            else:
-                                row[key] = value
-                
-                table_data.append(row)
-    
-    df = pd.DataFrame(table_data)
-    
-    # Identify columns containing lists
-    list_columns = [col for col in df.columns if df[col].apply(isinstance, args=(list,)).any()]
+# Calculate average
+if count_lower_limit > 0:
+    avg_lower_limit = sum_lower_limit / count_lower_limit
+else:
+    avg_lower_limit = 'NA'
 
-    # Explode the DataFrame based on list columns
-    if list_columns:
-        # Explode all list columns
-        for col in list_columns:
-            df = df.explode(col)
-        df.reset_index(drop=True, inplace=True)
-    
-    return df
+if count_upper_limit > 0:
+    avg_upper_limit = sum_upper_limit / count_upper_limit
+else:
+    avg_upper_limit = 'NA'
 
-
-if __name__ == "__main__":
-    json_file_path = '/home/yasin/yasin/projects/GNPS_live_processes/nf_output/mzml_summary_aggregation.json'
-    #df = create_filtered_table(json_file_path, type_="standards")
-    df = create_filtered_table(json_file_path, type_="standards", include_keys = 'EIC')
-    print(df)
-    print(len(df))
+print(f'Average lower limit: {avg_lower_limit}')
+print(f'Average upper limit: {avg_upper_limit}')

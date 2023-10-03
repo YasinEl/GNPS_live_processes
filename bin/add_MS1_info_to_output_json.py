@@ -22,6 +22,18 @@ def read_custom_csv(file_path):
 
     return df
 
+def rename_csv(df):
+    mz_bins = []
+    new_col_names = {}
+
+    for col in df.columns:
+        if 'TIC_intensity' in col and '-' in col:
+            lower, upper = col.split('_')[-1].split('-')
+            mz_bins.append((float(lower), float(upper)))
+            new_col_names[col] = f'TIC_intensity_{len(mz_bins)}'
+
+    df.rename(columns=new_col_names, inplace=True)
+    return df, mz_bins
 
 if __name__ == "__main__":
 
@@ -37,6 +49,8 @@ if __name__ == "__main__":
 
     df_MS1 = pd.read_csv(args.ms1_inv_csv)
 
+    df_MS1, mz_bins = rename_csv(df_MS1)
+
     df_features = read_custom_csv(args.feature_csv)
 
     metric = {
@@ -45,10 +59,11 @@ if __name__ == "__main__":
         "collection": "MS1_inventory",
         "reports": {
             "MS1_spectra": len(df_MS1),
-            "TIC_sum": df_MS1['intensity'].sum(),
-            "TIC_max": df_MS1['intensity'].max(),
-            "TIC_median": df_MS1['intensity'].median(),
+            "TIC_sum": df_MS1['TIC_intensity_complete'].sum(),
+            "TIC_max": df_MS1['TIC_intensity_complete'].max(),
+            "TIC_median": df_MS1['TIC_intensity_complete'].median(),
             "MS1_Features": len(df_features),
+            "TIC_bins": mz_bins,
             "MS1_inventory": df_MS1.to_dict()
         }
     }
