@@ -4,7 +4,7 @@ from io import StringIO
 import re
 import argparse
 import json
-
+import numpy as np
 
 def create_regex(df):
     results = []
@@ -45,6 +45,9 @@ def prepare_parameter_file(file_path, mzml_path):
     df_params = pd.read_excel(file_path, sheet_name='Filenames to Set Mapping', usecols=range(3), engine='openpyxl')
     df_params = df_params.dropna(subset=['parameters'])
 
+    df_general_params = pd.read_excel(file_path, sheet_name='Other parameters', usecols=range(2), engine='openpyxl')
+    df_general_params.set_index('parameter', inplace=True)
+
     df_samplename_set = df_params[df_params['parameters'].isin(['#STD_set_pattern', '#STD_set_skip'])]
     df_regex = create_regex(df_samplename_set)
 
@@ -61,7 +64,11 @@ def prepare_parameter_file(file_path, mzml_path):
 
     params_dict = {'df_standards': df_STD,
                    'df_params': df_params,
-                   'df_regex': df_regex}
+                   'df_regex': df_regex,
+                   'MS1 precision': int(df_general_params.loc['MS1 precision', 'value']),
+                   'MS2 precision': int(df_general_params.loc['MS2 precision', 'value']),
+                   'Lower mz of mass range': int(df_general_params.loc['Lower mz of mass range', 'value']),
+                   'Upper mz of mass range': int(df_general_params.loc['Upper mz of mass range', 'value'])}
        
     return params_dict
 
@@ -76,10 +83,9 @@ if __name__ == '__main__':
 
     param_dict = prepare_parameter_file(args.file_path, args.mzml_path)
 
-    print(param_dict)
-
     with open('prepared_parameters.json', 'w') as f:
-        json_data = {key: value.to_json() for key, value in param_dict.items()}
+        json_data = {key: value.to_json() if isinstance(value, pd.DataFrame) else value for key, value in param_dict.items()}
+
         json.dump(json_data, f, indent=4)
 
     

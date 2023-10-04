@@ -26,7 +26,11 @@ if __name__ == '__main__':
 
     with open(args.parameter_json, 'r') as f:
         json_data = json.load(f)
-        parameter_dict = {key: pd.read_json(StringIO(value)) for key, value in json_data.items()}
+        parameter_dict = {key: pd.read_json(StringIO(value)) if isinstance(value, str) else value for key, value in json_data.items() if value}
+
+
+
+
 
     df_standards = parameter_dict['df_standards']
 
@@ -44,6 +48,7 @@ if __name__ == '__main__':
         df_STD_openms = df_standards.copy()
 
         df_STD_openms['openms_formula'] = df_STD_openms.apply(get_openms_featurefindermetaboident_formulas, axis=1)
+        df_STD_openms['name'] = df_STD_openms['name'] + '_' + df_STD_openms['adduct']
         
         df_STD_openms.rename(columns=column_rename_map, inplace=True)
         df_STD_openms = df_STD_openms[['set', 'CompoundName', 'SumFormula', 'Charge', 'RetentionTime', 'Mass']]

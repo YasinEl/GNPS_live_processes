@@ -43,21 +43,29 @@ def get_MS1_MZ_range(mzml_path):
 
     return [median_lower_limit, median_upper_limit]
 
-def calculate_bins(mz_limits, total_windows=7, min_bin_size=50, division=5):
-    if total_windows % 2 == 0:
+def calculate_bins(mz_limits, total_windows=3, min_bin_size=50, division=5, equal_bins=False):
+    if total_windows % 2 == 0 and equal_bins == False:
         raise ValueError("Number of windows must be odd.")
 
     mz_range = mz_limits[1] - mz_limits[0]
-    edge_windows = total_windows // 2
 
     bin_size = mz_range / division
-    
+
     while bin_size < min_bin_size:
-        division -= 1
+        division -= 2
         bin_size = mz_range / division
         if division <= 1:
             break
 
+    if equal_bins:
+        bins = []
+        for i in range(total_windows):
+            lower = mz_limits[0] + i * bin_size
+            upper = mz_limits[0] + (i + 1) * bin_size
+            bins.append((lower, upper))
+        return bins
+    
+    edge_windows = total_windows // 2
     section_size = division // 3
     edge_bin_size = mz_range * (section_size / division)
     middle_bin_size = mz_range - 2 * edge_bin_size
@@ -80,6 +88,7 @@ def calculate_bins(mz_limits, total_windows=7, min_bin_size=50, division=5):
     return bins
 
 
+
 def calculate_tic(file_path):
     exp = oms.MSExperiment()
     oms.MzMLFile().load(file_path, exp)
@@ -88,7 +97,7 @@ def calculate_tic(file_path):
     tic_values = []
     
     mz_limits = get_MS1_MZ_range(file_path)
-    bin_limits = calculate_bins(mz_limits, total_windows=7, min_bin_size=50, division=8)
+    bin_limits = calculate_bins(mz_limits, total_windows=3, min_bin_size=50, division=3, equal_bins=True)
     tic_values_bins = [[] for _ in range(len(bin_limits))]
 
     for spectrum in exp:
