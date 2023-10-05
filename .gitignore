@@ -162,6 +162,7 @@ cython_debug/
 random_data/
 nf_output/
 big_test_set/
+dataset_rtShiftNegIrina/
 work/
 .nextflow.log*
 .nextflow/cache/

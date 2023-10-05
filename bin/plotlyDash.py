@@ -58,6 +58,9 @@ def create_filtered_table(json_file, name=None, type_=None, collection=None, inc
                                 if isinstance(list(value.values())[0], dict):
                                     for key2, value2 in value.items():
                                         row[key2] = list(value2.values())
+                                        if not list(value2.keys())[0][0].isdigit():
+                                            row['variable'] = list(value2.keys())
+
                                 else:
                                     row.update(value)
                             else:
@@ -196,7 +199,6 @@ def prepare_pca_data(df, intensity_column = 'TIC_intensity_complete'):
     date_time_mapping = df.groupby('mzml_file')['date_time'].first()
     finalDf['date_time'] = finalDf['mzml_file'].map(date_time_mapping)
     finalDf.sort_values(by='date_time', inplace=True)
-    #finalDf['datetime_order'] = np.arange(1, len(finalDf) + 1)
     finalDf['datetime_order'] = finalDf['date_time'].rank(method='min').astype(int)
 
     order_array = np.array(sorted(finalDf['datetime_order'].unique()))
@@ -224,24 +226,53 @@ app = dash.Dash(__name__, suppress_callback_exceptions=True, external_stylesheet
 
 
 #load data for everything
-df_standards = create_filtered_table('C:/Users/elabi/Downloads/mzml_summary_aggregation.json',  type_="standards")
-lcms_df = create_filtered_table("C:/Users/elabi/Downloads/mzml_summary_aggregation.json",  type_="standards", include_keys = 'EIC')
-ms1_inv = create_filtered_table("C:/Users/elabi/Downloads/mzml_summary_aggregation.json",  collection="MS1_inventory")
-ms1_tic = create_filtered_table("C:/Users/elabi/Downloads/mzml_summary_aggregation.json",  collection="MS1_inventory", include_keys = 'MS1_inventory')
-ms2_inv = create_filtered_table("C:/Users/elabi/Downloads/mzml_summary_aggregation.json",  collection="MS2_inventory")
-ms2_scans = create_filtered_table("C:/Users/elabi/Downloads/mzml_summary_aggregation.json",  collection="MS2_inventory", include_keys = 'MS2_inventory')
-ms1_tic_bins = create_filtered_table("C:/Users/elabi/Downloads/mzml_summary_aggregation.json",  collection="MS1_inventory", include_keys = 'TIC_bins')
+df_standards = create_filtered_table('C:/Users/elabi/Downloads/mzml_summary_aggregation_2.json',  type_="standards")
+lcms_df = create_filtered_table("C:/Users/elabi/Downloads/mzml_summary_aggregation_2.json",  type_="standards", include_keys = 'EIC')
+ms1_inv = create_filtered_table("C:/Users/elabi/Downloads/mzml_summary_aggregation_2.json",  collection="MS1_inventory")
+ms1_tic = create_filtered_table("C:/Users/elabi/Downloads/mzml_summary_aggregation_2.json",  collection="MS1_inventory", include_keys = 'MS1_inventory')
+ms1_ticbin_stats = create_filtered_table("C:/Users/elabi/Downloads/mzml_summary_aggregation_2.json",  collection="MS1_inventory", include_keys = 'TIC_metrics')
+ms1_featurebin_stats = create_filtered_table("C:/Users/elabi/Downloads/mzml_summary_aggregation_2.json",  collection="MS1_inventory", include_keys = 'Feature_metrics')
+
+#prepare ms1_stats_table
+melt_cols = [col for col in ms1_ticbin_stats.columns if col[0].isdigit()]
+id_vars = [col for col in ms1_ticbin_stats.columns if not col[0].isdigit()]
+ms1_ticbin_stats = pd.melt(ms1_ticbin_stats, id_vars=id_vars, value_vars=melt_cols, var_name='variables',
+                           value_name='values')
+ms1_ticbin_stats['variables'] = ms1_ticbin_stats['variable'].astype(str) + '_' + ms1_ticbin_stats['variables'].astype(str)
+melt_cols = [col for col in ms1_featurebin_stats.columns if col[0].isdigit()]
+id_vars = [col for col in ms1_featurebin_stats.columns if not col[0].isdigit()]
+ms1_featurebin_stats = pd.melt(ms1_featurebin_stats, id_vars=id_vars, value_vars=melt_cols, var_name='variables',
+                               value_name='values')
+ms1_featurebin_stats['variables'] = ms1_featurebin_stats['variable'].astype(str) + '_' + ms1_featurebin_stats['variables'].astype(str)
+ms1_feature_inv = pd.concat([ms1_ticbin_stats, ms1_featurebin_stats], ignore_index=True)
+ms1_feature_inv['values'] = pd.to_numeric(ms1_feature_inv['values'], errors='coerce')
+
+
+#prepare TIC table
+unique_dates = ms1_tic['date_time'].unique()
+unique_dates.sort()
+date_order = {date: i + 1 for i, date in enumerate(unique_dates)}
+ms1_tic['order'] = ms1_tic['date_time'].map(date_order)
+ms1_tic = ms1_tic.sort_values(by=['order', 'rt'], ascending=[True, True])
+
+TIC_bins = [item for item in ms1_tic.columns if "TIC_intensity" in item]
+
+#ms1_tic = create_filtered_table("C:/Users/elabi/Downloads/mzml_summary_aggregation_2.json",  collection="MS1_inventory", include_keys = 'MS1_inventory')
+ms2_inv = create_filtered_table("C:/Users/elabi/Downloads/mzml_summary_aggregation_2.json",  collection="MS2_inventory")
+ms2_scans = create_filtered_table("C:/Users/elabi/Downloads/mzml_summary_aggregation_2.json",  collection="MS2_inventory", include_keys = 'MS2_inventory')
+
+
 
 #get the lists of options for dropdowns etc
 mzml_list = ms1_inv['mzml_file'].unique().tolist()
 df_sorted = ms1_inv.sort_values('date_time')
 mzml_list_sorted = df_sorted['mzml_file'].unique().tolist()
 
-ms1_tic_bins = ms1_tic_bins[ms1_tic_bins['mzml_file'] == mzml_list[0]]
-
-ms1_tic_bins = ms1_tic_bins[['TIC_bins']]
-ms1_tic_bins['bin_id'] = range(1, len(ms1_tic_bins) + 1)
-
+# ms1_tic_bins = ms1_tic_bins[ms1_tic_bins['mzml_file'] == mzml_list[0]]
+#
+# ms1_tic_bins = ms1_tic_bins[['TIC_bins']]
+# ms1_tic_bins['bin_id'] = range(1, len(ms1_tic_bins) + 1)
+# print(ms1_tic_bins)
 # Create sorted and labeled options
 sorted_options = [{'label': f"{i + 1}: {filename}", 'value': filename} for i, filename in enumerate(mzml_list_sorted)]
 
@@ -581,7 +612,7 @@ def render_tab(tab_value):
             dbc.Row([
                 dbc.Col([
                     html.Div([
-                        html.Div("TIC Statistics", style={'textAlign': 'center', 'padding': '5px',
+                        html.Div("MS1 trends per mzML (TIC and feature statistics per mz bin)", style={'textAlign': 'center', 'padding': '5px',
                                                                    'backgroundColor': 'rgba(128, 128, 128, 0.1)'}),
                         dcc.Checklist(
                             id='relative-to-median-checkbox',
@@ -795,91 +826,52 @@ def create_pca_plot(data):
     Input('relative-to-median-checkbox', 'value')
 )
 def TIC_stats_plot(selected_mzml, relative_to_median_checkbox_value):
-    filtered_ms1_inv = ms1_inv[ms1_inv['mzml_file'].isin(selected_mzml)].copy()
-    filtered_ms1_inv = filtered_ms1_inv.sort_values(by='date_time')
+
+    filtered_ms1_inv_filtered = ms1_feature_inv[ms1_feature_inv['mzml_file'].isin(selected_mzml)].copy()
+    filtered_ms1_inv_filtered = filtered_ms1_inv_filtered.sort_values(by='date_time')
+    unique_dates = filtered_ms1_inv_filtered['date_time'].unique()
+    date_order = {date: i + 1 for i, date in enumerate(unique_dates)}
+    filtered_ms1_inv_filtered['order'] = filtered_ms1_inv_filtered['date_time'].map(date_order)
 
     fig = go.Figure()
 
-    for column in ['TIC_sum', 'TIC_max', 'TIC_median']:
+    if 'show_relative' in relative_to_median_checkbox_value:
+        medians = filtered_ms1_inv_filtered.groupby('variables')['values'].transform('median')
+        filtered_ms1_inv_filtered['y_values'] = (filtered_ms1_inv_filtered['values'] / medians * 100) - 100
+        y_axis_title = 'Relative to median [%]'
+    else:
+        filtered_ms1_inv_filtered.loc[filtered_ms1_inv_filtered['values'] <= 0, 'values'] = np.nan
+        filtered_ms1_inv_filtered['y_values'] = np.log10(filtered_ms1_inv_filtered['values'])
+        y_axis_title = 'Log10(value)'
 
-        y_values = filtered_ms1_inv[column]
-
-        if 'show_relative' in relative_to_median_checkbox_value:
-            y_values = (y_values / y_values.median() * 100) -100
-            y_axis_title = 'Relative to median [%]'
-        else:
-            y_values = np.log10(filtered_ms1_inv[column])
-            y_axis_title = 'Log10(value)'
-
-
+    for variable, data in filtered_ms1_inv_filtered.groupby('variables'):
         fig.add_trace(
-            go.Scatter(x=filtered_ms1_inv['date_time'], y=y_values,
+            go.Scatter(x=data['order'], y=data['y_values'],
                        mode='lines',
-                       name=column,
-                       customdata=filtered_ms1_inv['mzml_file'],
-                       hovertemplate="%{customdata}<br>Date Time: %{x}<br>Log10 Value: %{y}")
+                       name=variable,
+                       customdata=data['mzml_file'],
+                       hovertemplate="%{customdata}<br>Injection number: %{x}<br>Value: %{y}")
         )
 
     fig.update_layout(height=600,
-                      xaxis_title='Date Time',
+                      xaxis_title='Injection order',
                       yaxis_title=y_axis_title,
                       yaxis=dict(exponentformat='E'))
 
     return fig
 
+
+
 @app.callback(
     Output('tic-plot', 'figure'),
-    Input('mzml-checklist', 'value'),
-    Input('pca-df', 'data'),
-    Input('pca-plot', 'clickData')
+    Input('mzml-checklist', 'value')
 )
-def TIC_plot(selected_mzml, pca_dfs, clickData):
-    if pca_dfs is None:
-        return go.Figure()
+def TIC_plot(selected_mzml):
 
-    data_dict = json.loads(pca_dfs)
     filtered_ms1_tic = ms1_tic[ms1_tic['mzml_file'].isin(selected_mzml)].copy()
-    unique_dates = filtered_ms1_tic['date_time'].unique()
-    unique_dates.sort()
-    date_order = {date: i + 1 for i, date in enumerate(unique_dates)}
-    filtered_ms1_tic['order'] = filtered_ms1_tic['date_time'].map(date_order)
 
-    clicked_trace = None
-    clicked_mzml = clickData['points'][0]['customdata'] if clickData else None
     tic_fig = go.Figure()
     color_map = plt.cm.viridis
-    max_loading_index = max(
-        [int(key.split('_')[-1]) for key in data_dict.keys() if 'loadings_df_' in key and not key.endswith('complete')])
-    global_max_tic = filtered_ms1_tic['TIC_intensity_complete'].max()
-
-    norms = []
-    for i in range(1, max_loading_index + 1):
-        additional_loadings = pd.read_json(data_dict[f'loadings_df_{i}'])
-        pc_for_color = data_dict[f'top_2_pcs_{i}'][0]
-        pc_loadings = additional_loadings.loc[pc_for_color]
-        norm = TwoSlopeNorm(vmin=pc_loadings.min(), vmax=pc_loadings.max(), vcenter=0)
-
-        y0, y1 = ms1_tic_bins.loc[i - 1, 'TIC_bins']
-
-        y0_scaled = (y0 / global_max_tic) * global_max_tic
-        y1_scaled = (y1 / global_max_tic) * global_max_tic
-
-        print(y1)
-
-        for rt_bin, loading in pc_loadings.iteritems():
-            color_value = cm.RdBu_r(norm(loading))
-            color_value_rgb = [int(x * 255) for x in color_value[:3]]
-            tic_fig.add_shape(
-                type="rect",
-                x0=rt_bin,
-                x1=rt_bin + 3,
-                y0=y0_scaled,
-                y1=y1_scaled,
-                yref="y",
-                fillcolor=f"rgba({color_value_rgb[0]}, {color_value_rgb[1]}, {color_value_rgb[2]}, 0.7)",
-                line=dict(width=0),
-                layer="below"
-            )
 
     for order in sorted(filtered_ms1_tic['order'].unique()):
         single_order_df = filtered_ms1_tic[filtered_ms1_tic['order'] == order]
@@ -887,28 +879,11 @@ def TIC_plot(selected_mzml, pca_dfs, clickData):
         # Normalize 'order' to [0, 1] range for colormap
         normalized_order = (order - 1) / (len(unique_dates) - 1)
 
-        if clicked_mzml and clicked_mzml == single_order_df['mzml_file'].iloc[0]:
-            color_value = [255, 0, 0]  # Set to red if clicked
-            color_str = f'rgb({color_value[0]}, {color_value[1]}, {color_value[2]})'
-            opacity_value = 1
-            clicked_trace = go.Scatter(x=single_order_df['rt'], y=single_order_df['TIC_intensity_complete'],
-                                       mode='lines',
-                                       line=dict(color=color_str),
-                                       opacity=opacity_value,
-                                       name=f"{order}: {single_order_df['mzml_file'].iloc[0]}",
-                                       customdata=single_order_df['mzml_file'],
-                                       hovertemplate="%{customdata}<br>Intensity: %{y}")
-            continue
-        else:
-            color_value = [int(x * 255) for x in color_map(normalized_order)[:3]]
-            color_str = f'rgb({color_value[0]}, {color_value[1]}, {color_value[2]})'
-            if clicked_mzml:
-                opacity_value = 0.5
-            else:
-                opacity_value = 0.7
+        color_value = [int(x * 255) for x in color_map(normalized_order)[:3]]
+        color_str = f'rgb({color_value[0]}, {color_value[1]}, {color_value[2]})'
 
-        single_order_df = single_order_df.copy()
-        single_order_df['date_time'] = pd.to_datetime(single_order_df['date_time'])
+
+        opacity_value = 0.7
 
         tic_fig.add_trace(
             go.Scatter(x=single_order_df['rt'], y=single_order_df['TIC_intensity_complete'],
@@ -922,8 +897,6 @@ def TIC_plot(selected_mzml, pca_dfs, clickData):
                        hovertemplate="%{customdata}<br>Intensity: %{y}")
         )
 
-    if clicked_trace:
-        tic_fig.add_trace(clicked_trace)
 
     tic_fig.update_layout(height=600,
                           xaxis_title='Retention Time',
@@ -935,22 +908,6 @@ def TIC_plot(selected_mzml, pca_dfs, clickData):
     return tic_fig
 
 
-
-# @app.callback(
-#     Output('mzml-checklist', 'options'),
-#     Input('set-dropdown', 'value')
-# )
-# def update_mzml_checklist(selected_set):
-#     # Sort mzml_list based on time_of_upload
-#     df_sorted = ms1_inv.sort_values('date_time')
-#     mzml_list_sorted = df_sorted['mzml_file'].unique().tolist()
-#
-#     sorted_options = []
-#     for i, filename in enumerate(mzml_list_sorted):
-#         label = f"{i + 1}: {filename}"
-#         sorted_options.append({'label': label, 'value': filename})
-#
-#     return sorted_options
 
 @app.callback(
     Output('subplots', 'figure'),

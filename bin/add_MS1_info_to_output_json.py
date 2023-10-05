@@ -17,13 +17,13 @@ def read_custom_csv(file_path):
 
 def rename_csv(df):
     mz_bins = []
-    new_col_names = {}
+    #new_col_names = {}
     for col in df.columns:
         if 'TIC_intensity' in col and '-' in col:
             lower, upper = col.split('_')[-1].split('-')
             mz_bins.append((float(lower), float(upper)))
-            new_col_names[col] = f'TIC_intensity_{len(mz_bins)}'
-    df.rename(columns=new_col_names, inplace=True)
+            #new_col_names[col] = f'TIC_intensity_{len(mz_bins)}'
+    #df.rename(columns=new_col_names, inplace=True)
     return df, mz_bins
 
 def calculate_feature_metrics(df, mz_bins):
@@ -31,11 +31,11 @@ def calculate_feature_metrics(df, mz_bins):
     for lower, upper in mz_bins:
         df_bin = df[(df['mz'] >= lower) & (df['mz'] <= upper)]
         feature_metrics[f"{lower}-{upper}"] = {
-            "intensity_median": df_bin['intensity'].median(),
-            "FWHM_median": df_bin['FWHM'].median(),
-            "intensity_count": len(df_bin),
-            "intensity_sum": df_bin['intensity'].sum(),
-            "intensity_max": df_bin['intensity'].max()
+            "Feature median int": df_bin['intensity'].median(),
+            "Feature median FWHM": df_bin['FWHM'].median(),
+            "Feature count": len(df_bin)#,
+            #"intensity_sum": df_bin['intensity'].sum(),
+            #"intensity_max": df_bin['intensity'].max()
         }
     return feature_metrics
 
@@ -75,7 +75,7 @@ if __name__ == "__main__":
             "TIC_sum": df_MS1['TIC_intensity_complete'].sum(),
             "TIC_max": df_MS1['TIC_intensity_complete'].max(),
             "TIC_median": df_MS1['TIC_intensity_complete'].median(),
-            "TIC_bins": mz_bins,
+            #"TIC_bins": mz_bins,
             "TIC_metrics": tic_metrics,
             "Feature_metrics": feature_metrics,
             "MS1_inventory": df_MS1.to_dict()

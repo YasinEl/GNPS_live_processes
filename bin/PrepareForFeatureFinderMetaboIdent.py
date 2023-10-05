@@ -8,6 +8,9 @@ def get_openms_featurefindermetaboident_formulas(row):
     adduct = row['adduct']
     formula = row['formula']
 
+    if "(" in formula: #necessary until isotopes are supported in formula_validation
+        return formula
+
     if adduct[-1] == '+':
         altered_adduct = adduct.replace("]", "-H]")
     elif adduct[-1] == '-':
@@ -53,7 +56,7 @@ if __name__ == '__main__':
         df_STD_openms.rename(columns=column_rename_map, inplace=True)
         df_STD_openms = df_STD_openms[['set', 'CompoundName', 'SumFormula', 'Charge', 'RetentionTime', 'Mass']]
 
-        df_STD_openms['Mass'] = 0
+        #df_STD_openms['Mass'] = 0
         df_STD_openms['RetentionTimeRange'] = 0
         df_STD_openms['IsoDistribution'] = 0
 

@@ -10,25 +10,9 @@ TOOL_FOLDER = "$baseDir/bin"
 
 
 //need to screen M+x isotopes for MS2 mapping
-
-process CountMS2Scans {
-    conda "$TOOL_FOLDER/requirements.yml"
-    
-    //publishDir "./nf_output", mode: 'copy'
-
-    input:
-    path mzml_file
-    val toolFolder
-
-    output:
-    path("mzml_summary.json"), emit: json
-
-    script:
-    """
-    python $toolFolder/count_ms2.py $mzml_file > mzml_summary.json
-    """
-}
-
+//take care of pos/neg switching
+//take care of no MS2 spectra
+//corrupted raw/mzml files
 
 process CreateMS2Inventory {
     conda "$TOOL_FOLDER/requirements.yml"
