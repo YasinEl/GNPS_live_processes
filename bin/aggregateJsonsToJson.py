@@ -4,7 +4,10 @@ import argparse
 
 def aggregate_json_files(dir_path):
     aggregated_data = []
-    for file_name in os.listdir(dir_path):
+
+    files = os.listdir(dir_path)
+
+    for file_name in files:
         if file_name.endswith('.json'):
             file_path = os.path.join(dir_path, file_name)
             with open(file_path, 'r') as f:

@@ -19,10 +19,10 @@ def rename_csv(df):
     mz_bins = []
     new_col_names = {}
     for col in df.columns:
-        if 'TIC_MZ' in col and '-' in col:
-            lower, upper = col.split('_')[-1].split('-')
+        if 'MZbin ' in col and '-' in col:
+            lower, upper = col.split(' ')[-1].split('-')
             mz_bins.append((float(lower), float(upper)))
-            new_col_names[col] = f'TIC_MZbin_{len(mz_bins)}'
+            new_col_names[col] = f'MZbin {len(mz_bins)}'
     df.rename(columns=new_col_names, inplace=True)
     return df, mz_bins
 
@@ -30,7 +30,7 @@ def calculate_feature_metrics(df, mz_bins):
     feature_metrics = {}
     for i, (lower, upper) in enumerate(mz_bins, 1):
         df_bin = df[(df['mz'] >= lower) & (df['mz'] <= upper)]
-        feature_metrics[f"Feature_bin_{i}"] = {
+        feature_metrics[f"MZbin {i}"] = {
             "Feature median int": df_bin['intensity'].median(),
             "Feature median FWHM": df_bin['FWHM'].median(),
             "Feature count": len(df_bin)
@@ -53,7 +53,7 @@ if __name__ == "__main__":
 
     tic_metrics = {}
     for lower, upper in mz_bins:
-        col = f'TIC_MZbin_{len(tic_metrics) + 1}'
+        col = f'MZbin {len(tic_metrics) + 1}'
         if col in df_MS1.columns:
             #tic_metrics[f"{lower}-{upper}"] = {
             tic_metrics[col] = {
@@ -71,9 +71,9 @@ if __name__ == "__main__":
         "reports": {
             "MS1_spectra": len(df_MS1),
             "MS1_Features": len(df_features),
-            "TIC_sum": df_MS1['TIC_MZ_complete'].sum(),
-            "TIC_max": df_MS1['TIC_MZ_complete'].max(),
-            "TIC_median": df_MS1['TIC_MZ_complete'].median(),
+            "TIC_sum": df_MS1['all MZbins'].sum(),
+            "TIC_max": df_MS1['all MZbins'].max(),
+            "TIC_median": df_MS1['all MZbins'].median(),
             "TIC_bins": mz_bins,
             "TIC_metrics": tic_metrics,
             "Feature_metrics": feature_metrics,

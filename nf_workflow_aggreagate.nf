@@ -3,7 +3,6 @@
 nextflow.enable.dsl=2
 
 params.json_directory = "/home/yasin/yasin/projects/GNPS_live_processes/random_data"
-params.parameter_file = "/home/yasin/yasin/projects/GNPS_live_processes/random_data/parameter_file.xlsx" 
 TOOL_FOLDER = "$baseDir/bin"
 
 

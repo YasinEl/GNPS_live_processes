@@ -168,3 +168,4 @@ work/
 .nextflow/cache/
 .nextflow/history
 nohup.out
+nf_workflow_parallel.nf

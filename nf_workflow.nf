@@ -2,7 +2,7 @@
 
 nextflow.enable.dsl=2
 
-params.mzml_files = "/home/yasin/yasin/projects/GNPS_live_processes/random_data/onr2.mzML"
+params.mzml_files = "/home/yasin/yasin/projects/GNPS_live_processes/big_test_set/7.mzML"
 // params.mzml_files = ""
 params.parameter_file = "$workflow.projectDir/data/demo_parameters.xlsx"
 params.timeOfUpload = '2023-09-21 13:45:30'
@@ -13,7 +13,7 @@ TOOL_FOLDER = "$baseDir/bin"
 //take care of pos/neg switching
 //take care of no MS2 spectra
 //corrupted raw/mzml files
-//take care of different mass ranges
+//check mass accuracy
 
 process CreateMS2Inventory {
     conda "$TOOL_FOLDER/requirements.yml"
@@ -210,7 +210,7 @@ process Add_targeted_standard_extracts_to_output_collection {
 process Add_MS2_info_to_output_collection {
     conda "$TOOL_FOLDER/requirements.yml"
     
-    //publishDir "./nf_output", mode: 'copy'
+    publishDir "./nf_output", mode: 'copy'
 
     input:
     path output_json
@@ -247,8 +247,6 @@ process CreateMS1Inventory {
 process Add_MS1_info_to_output_collection {
     conda "$TOOL_FOLDER/requirements.yml"
     
-    publishDir "./nf_output", mode: 'copy'
-
     input:
     path output_json
     path MS1_table
@@ -325,14 +323,14 @@ workflow {
 
     //untargeted feature extraction
     feature_list = ApplyFeatureFinderMetabo(mzml_files_ch, paramList)
-    feature_list_w_adducts = ApplyMetaboliteAdductDecharger(feature_list, TOOL_FOLDER)
-    feature_list_csv = featureXML2csv(feature_list_w_adducts)
+        //feature_list_w_adducts = ApplyMetaboliteAdductDecharger(feature_list, TOOL_FOLDER)
+    feature_list_csv = featureXML2csv(feature_list)
     
     //collect untargeted MS1, MS2, and feature information
-    MS2_inventory = CreateMS2Inventory(mzml_files_ch, feature_list_w_adducts, paramList, TOOL_FOLDER)
-    output_json_ms2 = Add_MS2_info_to_output_collection(output_json_targeted, MS2_inventory, TOOL_FOLDER)
-
     MS1_inventory = CreateMS1Inventory(mzml_files_ch, TOOL_FOLDER)
-    output_json_ms1 = Add_MS1_info_to_output_collection(output_json_ms2, MS1_inventory, feature_list_csv, TOOL_FOLDER)
+    output_json_ms1 = Add_MS1_info_to_output_collection(output_json_targeted, MS1_inventory, feature_list_csv, TOOL_FOLDER)
+
+    MS2_inventory = CreateMS2Inventory(mzml_files_ch, feature_list, paramList, TOOL_FOLDER)
+    output_json_ms2 = Add_MS2_info_to_output_collection(output_json_ms1, MS2_inventory, TOOL_FOLDER)
 }
 

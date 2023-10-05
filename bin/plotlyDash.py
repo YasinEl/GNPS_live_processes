@@ -1,5 +1,4 @@
 import dash
-import os
 from dash import dcc, html, Input, Output, State
 import dash_bootstrap_components as dbc
 import numpy as np
@@ -7,20 +6,20 @@ import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 import matplotlib.pyplot as plt
 import seaborn as sns
-from matplotlib.colors import TwoSlopeNorm
-import matplotlib.cm as cm
-from plotly.colors import find_intermediate_color
 import plotly.express as px
-from plotly.express.colors import sample_colorscale
 from sklearn.decomposition import PCA
 from sklearn.preprocessing import StandardScaler
 import json
 import pandas as pd
-import re
+import argparse
+
+parser = argparse.ArgumentParser(description="Run plotly dash app.")
+parser.add_argument('--aggregated_json_path', type=str, help="Path to the json file.")
+
+args = parser.parse_args()
 
 
-path_to_json = 'C:/Users/elabi/Downloads'
-json_file_name = 'mzml_summary_aggregation.json'
+path_to_json = args.aggregated_json_path
 
 def create_filtered_table(json_file, name=None, type_=None, collection=None, include_keys=None):
     with open(json_file, 'r') as f:
@@ -88,6 +87,12 @@ def create_filtered_table(json_file, name=None, type_=None, collection=None, inc
 def assign_MS2_groups(df_input, peak_count_threshold, purity_threshold, intensity_ratio_threshold, collision_energy_ratio):
     # Identify the highest precursor intensity for each group
     df = df_input.copy()
+
+    if 'f_MS2' in df.columns:
+        df.drop('f_MS2', axis=1, inplace=True)
+    if 'highest_prec_int' in df.columns:
+        df.drop('highest_prec_int', axis=1, inplace=True)
+
     df['highest_prec_int'] = df.groupby(['Group', 'Associated Feature Label', 'Collision energy', 'mzml_file'])[
                                  'Precursor intensity'].transform(max) == df['Precursor intensity']
 
@@ -157,7 +162,7 @@ def prepare_correlation_analysis(df):
 
     return df_filled
 
-def prepare_pca_data(df, intensity_column = 'TIC_MZ_complete'):
+def prepare_pca_data(df, intensity_column = 'all MZbins'):
 
     df['rt_bin'] = (df['rt'] // 3) * 3
     df['rt_bin'] = df['rt_bin'].astype(int)
@@ -230,28 +235,30 @@ app = dash.Dash(__name__, suppress_callback_exceptions=True, external_stylesheet
 
 
 #load data for everything
-df_standards = create_filtered_table(os.path.join(path_to_json, json_file_name),  type_="standards")
-lcms_df = create_filtered_table(os.path.join(path_to_json, json_file_name),  type_="standards", include_keys = 'EIC')
-ms1_inv = create_filtered_table(os.path.join(path_to_json, json_file_name),  collection="MS1_inventory")
-ms1_tic = create_filtered_table(os.path.join(path_to_json, json_file_name),  collection="MS1_inventory", include_keys = 'MS1_inventory')
-ms1_ticbin_stats = create_filtered_table(os.path.join(path_to_json, json_file_name),  collection="MS1_inventory", include_keys = 'TIC_metrics')
-ms1_featurebin_stats = create_filtered_table(os.path.join(path_to_json, json_file_name),  collection="MS1_inventory", include_keys = 'Feature_metrics')
-ms2_inv = create_filtered_table(os.path.join(path_to_json, json_file_name),  collection="MS2_inventory")
-ms2_scans = create_filtered_table(os.path.join(path_to_json, json_file_name),  collection="MS2_inventory", include_keys = 'MS2_inventory')
+df_standards = create_filtered_table(path_to_json,  type_="standards")
+lcms_df = create_filtered_table(path_to_json,  type_="standards", include_keys = 'EIC')
+ms1_inv = create_filtered_table(path_to_json,  collection="MS1_inventory")
+ms1_tic = create_filtered_table(path_to_json,  collection="MS1_inventory", include_keys = 'MS1_inventory')
+ms1_ticbin_stats = create_filtered_table(path_to_json,  collection="MS1_inventory", include_keys = 'TIC_metrics')
+ms1_featurebin_stats = create_filtered_table(path_to_json,  collection="MS1_inventory", include_keys = 'Feature_metrics')
+ms2_inv = create_filtered_table(path_to_json,  collection="MS2_inventory")
+ms2_scans = create_filtered_table(path_to_json,  collection="MS2_inventory", include_keys = 'MS2_inventory')
 
 
 
 
 #prepare ms1_stats_table
-melt_cols = [col for col in ms1_ticbin_stats.columns if 'TIC_MZ' in col]
-id_vars = [col for col in ms1_ticbin_stats.columns if not 'TIC_MZ' in col]
+melt_cols = [col for col in ms1_ticbin_stats.columns if 'MZbin' in col]
+id_vars = [col for col in ms1_ticbin_stats.columns if not 'MZbin ' in col]
 ms1_ticbin_stats = pd.melt(ms1_ticbin_stats, id_vars=id_vars, value_vars=melt_cols, var_name='variables',
                            value_name='values')
+
 ms1_ticbin_stats['variables'] = ms1_ticbin_stats['variable'].astype(str) + '_' + ms1_ticbin_stats['variables'].astype(str)
-melt_cols = [col for col in ms1_featurebin_stats.columns if 'Feature_bin' in col]
-id_vars = [col for col in ms1_featurebin_stats.columns if not 'Feature_bin' in col]
+melt_cols = [col for col in ms1_featurebin_stats.columns if 'MZbin ' in col]
+id_vars = [col for col in ms1_featurebin_stats.columns if not 'MZbin ' in col]
 ms1_featurebin_stats = pd.melt(ms1_featurebin_stats, id_vars=id_vars, value_vars=melt_cols, var_name='variables',
                                value_name='values')
+
 ms1_featurebin_stats['variables'] = ms1_featurebin_stats['variable'].astype(str) + '_' + ms1_featurebin_stats['variables'].astype(str)
 ms1_feature_inv = pd.concat([ms1_ticbin_stats, ms1_featurebin_stats], ignore_index=True)
 ms1_feature_inv['values'] = pd.to_numeric(ms1_feature_inv['values'], errors='coerce')
@@ -264,10 +271,13 @@ date_order = {date: i + 1 for i, date in enumerate(unique_dates)}
 ms1_tic['order'] = ms1_tic['date_time'].map(date_order)
 ms1_tic = ms1_tic.sort_values(by=['order', 'rt'], ascending=[True, True])
 
-TIC_bins = [item for item in ms1_tic.columns if "TIC_MZ" in item]
+TIC_bins = [item for item in ms1_tic.columns if "MZbin" in item]
 
 #ms1_tic = create_filtered_table(os.path.join(path_to_json, json_file_name),  collection="MS1_inventory", include_keys = 'MS1_inventory')
 
+#prepare MS2 table
+ms2_scans['order'] = ms2_scans['date_time'].map(date_order)
+ms2_scans = ms2_scans.sort_values(by=['order'], ascending=[True])
 
 
 
@@ -276,11 +286,7 @@ mzml_list = ms1_inv['mzml_file'].unique().tolist()
 df_sorted = ms1_inv.sort_values('date_time')
 mzml_list_sorted = df_sorted['mzml_file'].unique().tolist()
 
-# ms1_tic_bins = ms1_tic_bins[ms1_tic_bins['mzml_file'] == mzml_list[0]]
-#
-# ms1_tic_bins = ms1_tic_bins[['TIC_bins']]
-# ms1_tic_bins['bin_id'] = range(1, len(ms1_tic_bins) + 1)
-# print(ms1_tic_bins)
+
 # Create sorted and labeled options
 sorted_options = [{'label': f"{i + 1}: {filename}", 'value': filename} for i, filename in enumerate(mzml_list_sorted)]
 
@@ -439,7 +445,7 @@ def render_tab(tab_value):
                                 dcc.Checklist(
                                     id='relative-scale-checkbox',
                                     options=[{'label': 'Relative Scale', 'value': 'relative'}],
-                                    value=[]
+                                    value=['relative']
                                 ),
                             ], width=4, className='align-self-end'),
                         ], style={'margin-top': '10px'}),
@@ -460,7 +466,7 @@ def render_tab(tab_value):
                         id='molecule-dropdown',
                         options=[{'label': i, 'value': i} for i in df_standards['name'].unique()],
                         value=df_standards['name'].unique()[0],
-                        style={'width': '200px'}
+                        style={'width': '500px'}
                     ),
 
                     dcc.Graph(id='lcms-plot', style={'height': '800px', 'marginBottom': '10px'})
@@ -475,6 +481,7 @@ def render_tab(tab_value):
             dbc.Row([
                 dbc.Col([
                     html.Div([
+                        html.Label("Nr of peaks in 'good' spectrum"),
                         dcc.Slider(
                             id='peak-count-slider',
                             min=1,
@@ -483,10 +490,11 @@ def render_tab(tab_value):
                             value=4,
                             persistence=True
                         ),
-                        html.Label("Peak Count Threshold")
+                        html.Div(style={'height': '20px'})
                     ]),
 
                     html.Div([
+                        html.Label("Minimum precursor purity"),
                         dcc.Slider(
                             id='purity-slider',
                             min=0,
@@ -495,10 +503,11 @@ def render_tab(tab_value):
                             value=0.5,
                             persistence=True
                         ),
-                        html.Label("Purity Threshold")
+                        html.Div(style={'height': '20px'})
                     ]),
 
                     html.Div([
+                        html.Label("Minimum precursor/feature apex ratio"),
                         dcc.Slider(
                             id='intensity-ratio-slider',
                             min=0,
@@ -507,10 +516,11 @@ def render_tab(tab_value):
                             value=0.3,
                             persistence=True
                         ),
-                        html.Label("Intensity Ratio Threshold")
+                        html.Div(style={'height': '20px'})
                     ]),
 
                     html.Div([
+                        html.Label("Maximum un-fragmented precursor intensity"),
                         dcc.Slider(
                             id='collision-energy-slider',
                             min=0,
@@ -519,13 +529,13 @@ def render_tab(tab_value):
                             value=0.7,
                             persistence=True
                         ),
-                        html.Label("Collision Energy Ratio")
+                        html.Div(style={'height': '20px'})
                     ]),
 
                     html.Div([
                         html.Button('Update Plots', id='update-button', n_clicks=0)
                     ]),
-                ], width=2),
+                ], width=4),
 
                 dbc.Col([
                     html.Div([
@@ -539,8 +549,25 @@ def render_tab(tab_value):
                             ])
                     ], style={'border': '1px solid grey', 'border-radius': '8px', 'padding': '10px',
                               'marginBottom': '10px'}),
-                ], width=10),
+                ], width=8),
             ], style={'marginTop': '10px'}),
+
+            dbc.Row([
+                dbc.Col([
+                    html.Div([
+                        html.Div("MS2-trends", style={'textAlign': 'center', 'padding': '5px',
+                                                        'backgroundColor': 'rgba(128, 128, 128, 0.1)',
+                                                        'marginBottom': '5px'}),
+
+                        dcc.Loading(
+                            id="loading",
+                            type="circle",
+                            children=[
+                                dcc.Graph(id='ms2-trends', style={'height': '400px', 'marginBottom': '10px'})])
+                    ], style={'border': '1px solid grey', 'border-radius': '8px', 'padding': '10px',
+                              'marginBottom': '10px'}),
+                ], width=12),
+            ]),
 
             dbc.Row([
                 dbc.Col([
@@ -611,7 +638,7 @@ def render_tab(tab_value):
                             dcc.Dropdown(
                                 id='TIC-types',
                                 options=[{'label': i, 'value': i} for i in TIC_bins],
-                                value='TIC_MZ_complete'
+                                value='all MZbins'
                             )
                         ], width={'size': 2}),
                         dcc.Loading(
@@ -767,14 +794,14 @@ def update_pca_dataframes(selected_mzml, make_sure_to_start):
     return_dict = {}
 
     for col in filtered_ms1_tic.columns:
-        if 'TIC_MZ_complete' in col:
+        if 'all MZbins' in col:
             pca_data, loadings_df, top_2_pcs = prepare_pca_data(filtered_ms1_tic, intensity_column=col)
 
-            suffix = col.split('_')[-1]  # Gets the last part after '_' which will be 'complete', '1', '2', etc.
+            #suffix = col.split('_')[-1]  # Gets the last part after '_' which will be 'complete', '1', '2', etc.
 
-            return_dict[f'pca_data_{suffix}'] = pca_data.to_json()
-            return_dict[f'loadings_df_{suffix}'] = loadings_df.to_json()
-            return_dict[f'top_2_pcs_{suffix}'] = top_2_pcs
+            return_dict[f'pca_data_{col}'] = pca_data.to_json()
+            return_dict[f'loadings_df_{col}'] = loadings_df.to_json()
+            return_dict[f'top_2_pcs_{col}'] = top_2_pcs
 
     return json.dumps(return_dict)
 
@@ -793,9 +820,9 @@ def create_pca_plot(data):
         data_dict = json.loads(data)
 
         # Convert JSON strings back to pandas DataFrames
-        pca_data = pd.read_json(data_dict['pca_data_complete'])
-        loadings_df = pd.read_json(data_dict['loadings_df_complete'])
-        top_2_pcs = data_dict['top_2_pcs_complete']
+        pca_data = pd.read_json(data_dict['pca_data_all MZbins'])
+        #loadings_df = pd.read_json(data_dict['loadings_df_all MZbins'])
+        top_2_pcs = data_dict['top_2_pcs_all MZbins']
 
 
         unique_dates = pca_data['datetime_order'].unique()
@@ -1017,6 +1044,48 @@ def update_dataframe(n_clicks, peak_count_threshold, purity_threshold, intensity
 
 
 @app.callback(
+    Output('ms2-trends', 'figure'),
+    Input('store-df', 'data'),
+    State('peak-count-slider', 'value'),
+    State('purity-slider', 'value'),
+    State('intensity-ratio-slider', 'value'),
+    State('collision-energy-slider', 'value')
+)
+def make_ms2trend_figure(df_dict, peak_count_threshold, purity_threshold, intensity_ratio_threshold, collision_energy_ratio):
+    if df_dict is None:
+        raise dash.exceptions.PreventUpdate
+
+    df = pd.DataFrame(df_dict)
+    df_count = df.groupby(['order', 'f_MS2']).size().reset_index(name='count')
+
+    color_map = {
+        'vacant MS2': '#E41A1C',
+        'no MS2': '#377EB8',
+        f'≥{str(peak_count_threshold)} fragments': '#4DAF4A',
+        'redundant MS2': '#984EA3',
+        f'<{str(peak_count_threshold)} fragments; precursor purity <{(purity_threshold) * 100}%': '#FF7F00',
+        f'<{str(peak_count_threshold)} fragments; precursor ion >{str(collision_energy_ratio * 100)}% of MS2 base peak': '#000000',
+        f'<{str(peak_count_threshold)} fragments': '#A65628',
+        f'<{str(peak_count_threshold)} fragments; triggered <{str(intensity_ratio_threshold * 100)}% of apex': '#F781BF'
+    }
+
+    filtered_color_map = {k: v for k, v in color_map.items() if k in df_count['f_MS2'].unique()}
+
+    fig = px.line(df_count, x='order', y='count', color='f_MS2', color_discrete_map=filtered_color_map)
+
+    fig.update_layout(
+        xaxis_title='Injection',
+        yaxis_title='Count'
+    )
+
+    return fig
+
+
+
+
+
+
+@app.callback(
     Output('ms2-plot2', 'figure'),
     Input('store-df', 'data'),
     Input('mzml-file-dropdown', 'value'),
@@ -1043,10 +1112,7 @@ def make_MS2_map(df_input, selected_mzml, plot_x, plot_y, log_x, log_y, peak_cou
     df = df_input.copy()
 
     df = df[df['mzml_file'] == selected_mzml]
-
     df = assign_MS2_groups(df, peak_count_threshold, purity_threshold, intensity_ratio_threshold, collision_energy_ratio)
-
-
 
     if plot_x in 'Apex/Precursor intensity' or plot_y in 'Apex/Precursor intensity':
         df['Apex/Precursor intensity'] = df.apply(
@@ -1055,12 +1121,17 @@ def make_MS2_map(df_input, selected_mzml, plot_x, plot_y, log_x, log_y, peak_cou
             axis=1
         )
 
+
     if 'log10' in log_x:
-        df[f'log({plot_x})'] = np.where(df[plot_x] > 0, np.log10(df[plot_x]), None)
+        mask = df[plot_x] > 0
+        df.loc[mask, f'log({plot_x})'] = np.log10(df.loc[mask, plot_x])
+        df.loc[~mask, f'log({plot_x})'] = None
         plot_x = f'log({plot_x})'
 
     if 'log10' in log_y:
-        df[f'log({plot_y})'] = np.where(df[plot_y] > 0, np.log10(df[plot_y]), None)
+        mask = df[plot_y] > 0
+        df.loc[mask, f'log({plot_y})'] = np.log10(df.loc[mask, plot_y])
+        df.loc[~mask, f'log({plot_y})'] = None
         plot_y = f'log({plot_y})'
 
     color_map = {

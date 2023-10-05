@@ -3,8 +3,8 @@ channels:
   - conda-forge
   - bioconda
 dependencies:
-  - python>=3.7
-  - openms
+  - python==3.11
+  - openms=3.0.0
   - pip
   - numpy
   - pandas
@@ -12,9 +12,9 @@ dependencies:
   - openpyxl
   - pip:
     - molmass
-    - pyteomics
+    - pyteomics==4.6.2
     - xmltodict
-    - pyopenms
+    - pyopenms==3.0.0
     - plotly
-    - formula_validation
+    - formula_validation==1.0.1
     - rdkit

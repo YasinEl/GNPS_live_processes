@@ -1,0 +1,17 @@
+name: GNPS_live_processes_env
+channels:
+  - conda-forge
+dependencies:
+  - python==3.11
+  - pip
+  - numpy
+  - pandas
+  - pip:
+    - dash
+    - dash_bootstrap_components
+    - plotly
+    - matplotlib
+    - seaborn
+    - sklearn
+    - json
+    
