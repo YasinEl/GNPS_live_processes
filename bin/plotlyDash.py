@@ -21,6 +21,7 @@ args = parser.parse_args()
 
 path_to_json = args.aggregated_json_path
 
+
 def create_filtered_table(json_file, name=None, type_=None, collection=None, include_keys=None):
     with open(json_file, 'r') as f:
         data = json.load(f)
@@ -301,9 +302,6 @@ ms_scan_variables = ['Retention Time (min)', 'Precursor m/z', 'Collision energy'
 
 # Navbar
 navbar = dbc.NavbarSimple(
-    children=[
-        dbc.NavItem(dbc.NavLink("Page 1", href="/")),
-    ],
     brand="GNPS-live",
     color="dark",
     dark=True,
@@ -1056,7 +1054,8 @@ def make_ms2trend_figure(df_dict, peak_count_threshold, purity_threshold, intens
         raise dash.exceptions.PreventUpdate
 
     df = pd.DataFrame(df_dict)
-    df_count = df.groupby(['order', 'f_MS2']).size().reset_index(name='count')
+    df_count = df.groupby(['order', 'f_MS2']).agg({'mzml_file': 'first', 'order': 'size'}).rename(columns={'order': 'count'}).reset_index()
+
 
     color_map = {
         'vacant MS2': '#E41A1C',
@@ -1071,7 +1070,8 @@ def make_ms2trend_figure(df_dict, peak_count_threshold, purity_threshold, intens
 
     filtered_color_map = {k: v for k, v in color_map.items() if k in df_count['f_MS2'].unique()}
 
-    fig = px.line(df_count, x='order', y='count', color='f_MS2', color_discrete_map=filtered_color_map)
+    fig = px.line(df_count, x='order', y='count', color='f_MS2', color_discrete_map=filtered_color_map,
+                  hover_data=['mzml_file'])
 
     fig.update_layout(
         xaxis_title='Injection',
