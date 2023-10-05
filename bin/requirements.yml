@@ -16,5 +16,6 @@ dependencies:
     - xmltodict
     - pyopenms==3.0.0
     - plotly
-    - formula_validation==1.0.1
     - rdkit
+    #- formula_validation==1.0.1
+
