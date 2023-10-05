@@ -17,25 +17,23 @@ def read_custom_csv(file_path):
 
 def rename_csv(df):
     mz_bins = []
-    #new_col_names = {}
+    new_col_names = {}
     for col in df.columns:
-        if 'TIC_intensity' in col and '-' in col:
+        if 'TIC_MZ' in col and '-' in col:
             lower, upper = col.split('_')[-1].split('-')
             mz_bins.append((float(lower), float(upper)))
-            #new_col_names[col] = f'TIC_intensity_{len(mz_bins)}'
-    #df.rename(columns=new_col_names, inplace=True)
+            new_col_names[col] = f'TIC_MZbin_{len(mz_bins)}'
+    df.rename(columns=new_col_names, inplace=True)
     return df, mz_bins
 
 def calculate_feature_metrics(df, mz_bins):
     feature_metrics = {}
-    for lower, upper in mz_bins:
+    for i, (lower, upper) in enumerate(mz_bins, 1):
         df_bin = df[(df['mz'] >= lower) & (df['mz'] <= upper)]
-        feature_metrics[f"{lower}-{upper}"] = {
+        feature_metrics[f"Feature_bin_{i}"] = {
             "Feature median int": df_bin['intensity'].median(),
             "Feature median FWHM": df_bin['FWHM'].median(),
-            "Feature count": len(df_bin)#,
-            #"intensity_sum": df_bin['intensity'].sum(),
-            #"intensity_max": df_bin['intensity'].max()
+            "Feature count": len(df_bin)
         }
     return feature_metrics
 
@@ -55,9 +53,10 @@ if __name__ == "__main__":
 
     tic_metrics = {}
     for lower, upper in mz_bins:
-        col = f'TIC_intensity_{len(tic_metrics) + 1}'
+        col = f'TIC_MZbin_{len(tic_metrics) + 1}'
         if col in df_MS1.columns:
-            tic_metrics[f"{lower}-{upper}"] = {
+            #tic_metrics[f"{lower}-{upper}"] = {
+            tic_metrics[col] = {
                 "TIC_sum": df_MS1[col].sum(),
                 "TIC_max": df_MS1[col].max(),
                 "TIC_median": df_MS1[col].median()
@@ -72,10 +71,10 @@ if __name__ == "__main__":
         "reports": {
             "MS1_spectra": len(df_MS1),
             "MS1_Features": len(df_features),
-            "TIC_sum": df_MS1['TIC_intensity_complete'].sum(),
-            "TIC_max": df_MS1['TIC_intensity_complete'].max(),
-            "TIC_median": df_MS1['TIC_intensity_complete'].median(),
-            #"TIC_bins": mz_bins,
+            "TIC_sum": df_MS1['TIC_MZ_complete'].sum(),
+            "TIC_max": df_MS1['TIC_MZ_complete'].max(),
+            "TIC_median": df_MS1['TIC_MZ_complete'].median(),
+            "TIC_bins": mz_bins,
             "TIC_metrics": tic_metrics,
             "Feature_metrics": feature_metrics,
             "MS1_inventory": df_MS1.to_dict()

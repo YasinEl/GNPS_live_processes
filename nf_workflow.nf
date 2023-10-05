@@ -13,6 +13,7 @@ TOOL_FOLDER = "$baseDir/bin"
 //take care of pos/neg switching
 //take care of no MS2 spectra
 //corrupted raw/mzml files
+//take care of different mass ranges
 
 process CreateMS2Inventory {
     conda "$TOOL_FOLDER/requirements.yml"

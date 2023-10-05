@@ -114,12 +114,12 @@ def calculate_tic(file_path):
                 tic_bin = sum(intensity[mask])
                 tic_values_bins[i].append(tic_bin)
                 
-    column_names = {f'TIC_intensity_{lower:.2f}-{upper:.2f}': tic_bin for i, tic_bin in enumerate(tic_values_bins)
+    column_names = {f'TIC_MZbin_{lower:.2f}-{upper:.2f}': tic_bin for i, tic_bin in enumerate(tic_values_bins)
                     for lower, upper in [bin_limits[i]]}
     
     df = pd.DataFrame({
         'rt': rt_values,
-        'TIC_intensity_complete': tic_values,
+        'TIC_MZ_complete': tic_values,
         **column_names
     })
     

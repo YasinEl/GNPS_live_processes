@@ -1,4 +1,5 @@
 import dash
+import os
 from dash import dcc, html, Input, Output, State
 import dash_bootstrap_components as dbc
 import numpy as np
@@ -11,12 +12,15 @@ import matplotlib.cm as cm
 from plotly.colors import find_intermediate_color
 import plotly.express as px
 from plotly.express.colors import sample_colorscale
-
 from sklearn.decomposition import PCA
 from sklearn.preprocessing import StandardScaler
 import json
 import pandas as pd
 import re
+
+
+path_to_json = 'C:/Users/elabi/Downloads'
+json_file_name = 'mzml_summary_aggregation.json'
 
 def create_filtered_table(json_file, name=None, type_=None, collection=None, include_keys=None):
     with open(json_file, 'r') as f:
@@ -153,7 +157,7 @@ def prepare_correlation_analysis(df):
 
     return df_filled
 
-def prepare_pca_data(df, intensity_column = 'TIC_intensity_complete'):
+def prepare_pca_data(df, intensity_column = 'TIC_MZ_complete'):
 
     df['rt_bin'] = (df['rt'] // 3) * 3
     df['rt_bin'] = df['rt_bin'].astype(int)
@@ -226,21 +230,26 @@ app = dash.Dash(__name__, suppress_callback_exceptions=True, external_stylesheet
 
 
 #load data for everything
-df_standards = create_filtered_table('C:/Users/elabi/Downloads/mzml_summary_aggregation_2.json',  type_="standards")
-lcms_df = create_filtered_table("C:/Users/elabi/Downloads/mzml_summary_aggregation_2.json",  type_="standards", include_keys = 'EIC')
-ms1_inv = create_filtered_table("C:/Users/elabi/Downloads/mzml_summary_aggregation_2.json",  collection="MS1_inventory")
-ms1_tic = create_filtered_table("C:/Users/elabi/Downloads/mzml_summary_aggregation_2.json",  collection="MS1_inventory", include_keys = 'MS1_inventory')
-ms1_ticbin_stats = create_filtered_table("C:/Users/elabi/Downloads/mzml_summary_aggregation_2.json",  collection="MS1_inventory", include_keys = 'TIC_metrics')
-ms1_featurebin_stats = create_filtered_table("C:/Users/elabi/Downloads/mzml_summary_aggregation_2.json",  collection="MS1_inventory", include_keys = 'Feature_metrics')
+df_standards = create_filtered_table(os.path.join(path_to_json, json_file_name),  type_="standards")
+lcms_df = create_filtered_table(os.path.join(path_to_json, json_file_name),  type_="standards", include_keys = 'EIC')
+ms1_inv = create_filtered_table(os.path.join(path_to_json, json_file_name),  collection="MS1_inventory")
+ms1_tic = create_filtered_table(os.path.join(path_to_json, json_file_name),  collection="MS1_inventory", include_keys = 'MS1_inventory')
+ms1_ticbin_stats = create_filtered_table(os.path.join(path_to_json, json_file_name),  collection="MS1_inventory", include_keys = 'TIC_metrics')
+ms1_featurebin_stats = create_filtered_table(os.path.join(path_to_json, json_file_name),  collection="MS1_inventory", include_keys = 'Feature_metrics')
+ms2_inv = create_filtered_table(os.path.join(path_to_json, json_file_name),  collection="MS2_inventory")
+ms2_scans = create_filtered_table(os.path.join(path_to_json, json_file_name),  collection="MS2_inventory", include_keys = 'MS2_inventory')
+
+
+
 
 #prepare ms1_stats_table
-melt_cols = [col for col in ms1_ticbin_stats.columns if col[0].isdigit()]
-id_vars = [col for col in ms1_ticbin_stats.columns if not col[0].isdigit()]
+melt_cols = [col for col in ms1_ticbin_stats.columns if 'TIC_MZ' in col]
+id_vars = [col for col in ms1_ticbin_stats.columns if not 'TIC_MZ' in col]
 ms1_ticbin_stats = pd.melt(ms1_ticbin_stats, id_vars=id_vars, value_vars=melt_cols, var_name='variables',
                            value_name='values')
 ms1_ticbin_stats['variables'] = ms1_ticbin_stats['variable'].astype(str) + '_' + ms1_ticbin_stats['variables'].astype(str)
-melt_cols = [col for col in ms1_featurebin_stats.columns if col[0].isdigit()]
-id_vars = [col for col in ms1_featurebin_stats.columns if not col[0].isdigit()]
+melt_cols = [col for col in ms1_featurebin_stats.columns if 'Feature_bin' in col]
+id_vars = [col for col in ms1_featurebin_stats.columns if not 'Feature_bin' in col]
 ms1_featurebin_stats = pd.melt(ms1_featurebin_stats, id_vars=id_vars, value_vars=melt_cols, var_name='variables',
                                value_name='values')
 ms1_featurebin_stats['variables'] = ms1_featurebin_stats['variable'].astype(str) + '_' + ms1_featurebin_stats['variables'].astype(str)
@@ -255,11 +264,10 @@ date_order = {date: i + 1 for i, date in enumerate(unique_dates)}
 ms1_tic['order'] = ms1_tic['date_time'].map(date_order)
 ms1_tic = ms1_tic.sort_values(by=['order', 'rt'], ascending=[True, True])
 
-TIC_bins = [item for item in ms1_tic.columns if "TIC_intensity" in item]
+TIC_bins = [item for item in ms1_tic.columns if "TIC_MZ" in item]
 
-#ms1_tic = create_filtered_table("C:/Users/elabi/Downloads/mzml_summary_aggregation_2.json",  collection="MS1_inventory", include_keys = 'MS1_inventory')
-ms2_inv = create_filtered_table("C:/Users/elabi/Downloads/mzml_summary_aggregation_2.json",  collection="MS2_inventory")
-ms2_scans = create_filtered_table("C:/Users/elabi/Downloads/mzml_summary_aggregation_2.json",  collection="MS2_inventory", include_keys = 'MS2_inventory')
+#ms1_tic = create_filtered_table(os.path.join(path_to_json, json_file_name),  collection="MS1_inventory", include_keys = 'MS1_inventory')
+
 
 
 
@@ -599,6 +607,13 @@ def render_tab(tab_value):
                     html.Div([
                         html.Div("Total ion chromatogram (TIC)", style={'textAlign': 'center', 'padding': '5px',
                                                           'backgroundColor': 'rgba(128, 128, 128, 0.1)'}),
+                        dbc.Col([
+                            dcc.Dropdown(
+                                id='TIC-types',
+                                options=[{'label': i, 'value': i} for i in TIC_bins],
+                                value='TIC_MZ_complete'
+                            )
+                        ], width={'size': 2}),
                         dcc.Loading(
                             id="loading",
                             type="circle",
@@ -606,7 +621,7 @@ def render_tab(tab_value):
                                 dcc.Graph(id='tic-plot', style={'height': '600px', 'marginBottom': '10px'})])
                     ], style={'border': '1px solid grey', 'border-radius': '8px', 'padding': '10px',
                               'marginBottom': '10px'}),
-                ], width=12),  # This makes it span the entire width
+                ], width=12),
             ]),
 
             dbc.Row([
@@ -646,7 +661,7 @@ def render_tab(tab_value):
         ])
 
 
-from dash import Input, Output, State
+
 
 
 @app.callback(
@@ -752,7 +767,7 @@ def update_pca_dataframes(selected_mzml, make_sure_to_start):
     return_dict = {}
 
     for col in filtered_ms1_tic.columns:
-        if 'TIC_intensity' in col:
+        if 'TIC_MZ_complete' in col:
             pca_data, loadings_df, top_2_pcs = prepare_pca_data(filtered_ms1_tic, intensity_column=col)
 
             suffix = col.split('_')[-1]  # Gets the last part after '_' which will be 'complete', '1', '2', etc.
@@ -861,12 +876,12 @@ def TIC_stats_plot(selected_mzml, relative_to_median_checkbox_value):
     return fig
 
 
-
 @app.callback(
     Output('tic-plot', 'figure'),
-    Input('mzml-checklist', 'value')
+    Input('mzml-checklist', 'value'),
+    Input('TIC-types', 'value')
 )
-def TIC_plot(selected_mzml):
+def TIC_plot(selected_mzml, TIC_type):
 
     filtered_ms1_tic = ms1_tic[ms1_tic['mzml_file'].isin(selected_mzml)].copy()
 
@@ -886,7 +901,7 @@ def TIC_plot(selected_mzml):
         opacity_value = 0.7
 
         tic_fig.add_trace(
-            go.Scatter(x=single_order_df['rt'], y=single_order_df['TIC_intensity_complete'],
+            go.Scatter(x=single_order_df['rt'], y=single_order_df[TIC_type],
                        mode='lines',
                        line=dict(
                            color=color_str,
