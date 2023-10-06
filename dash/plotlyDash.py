@@ -1,19 +1,23 @@
 import dash
 from dash import dcc, html, Input, Output, State
+
 import dash_bootstrap_components as dbc
-import numpy as np
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
+import plotly.express as px
+
 import matplotlib.pyplot as plt
 import seaborn as sns
-import plotly.express as px
+
 from sklearn.decomposition import PCA
 from sklearn.preprocessing import StandardScaler
+import numpy as np
+
 import json
 import pandas as pd
 import argparse
 
-parser = argparse.ArgumentParser(description="Run plotly dash app.")
+parser = argparse.ArgumentParser(description="Run plotly dash dash_app.")
 parser.add_argument('--aggregated_json_path', type=str, help="Path to the json file.")
 
 args = parser.parse_args()
@@ -232,7 +236,7 @@ def prepare_pca_data(df, intensity_column = 'all MZbins'):
 
 
 # Initialize app
-app = dash.Dash(__name__, suppress_callback_exceptions=True, external_stylesheets=[dbc.themes.FLATLY])
+dash_app = dash.Dash(__name__, suppress_callback_exceptions=True, external_stylesheets=[dbc.themes.FLATLY])
 
 
 #load data for everything
@@ -308,7 +312,7 @@ navbar = dbc.NavbarSimple(
 )
 
 # Main layout
-app.layout = html.Div([
+dash_app.layout = html.Div([
     dcc.Location(id='url', refresh=False),
     navbar,
     dbc.Row([
@@ -348,7 +352,7 @@ app.layout = html.Div([
 ])
 
 
-@app.callback(
+@dash_app.callback(
     Output('intermediate-value', 'data'),  # You can use a hidden Div to store intermediate values
     Input('mzml-checklist', 'value')
 )
@@ -360,7 +364,7 @@ def start_lazy_callbacks(selected_mzml):
     return None
 
 
-@app.callback(
+@dash_app.callback(
     Output('tabs-content', 'children'),
     [Input('tabs', 'active_tab')]
 )
@@ -368,7 +372,7 @@ def update_tab_content(active_tab):
     return render_tab(active_tab)
 
 
-@app.callback(
+@dash_app.callback(
     Output('lcms-plot', 'figure'),
     Input('mzml-checklist', 'value'),
     Input('molecule-dropdown', 'value')
@@ -689,7 +693,7 @@ def render_tab(tab_value):
 
 
 
-@app.callback(
+@dash_app.callback(
     Output('mzml-checklist', 'value'),
     [Input('select-mzmls-button', 'n_clicks'),
      Input('unselect-mzmls-button', 'n_clicks')],
@@ -724,7 +728,7 @@ def update_checklist(select_clicks, unselect_clicks, text_value, selected_mzmls)
 
 
 
-@app.callback(
+@dash_app.callback(
     Output('ms2-scan-counts', 'figure'),
     [Input('mzml-checklist', 'value')]
 )
@@ -781,7 +785,7 @@ def update_barplot(selected_mzml):
 
 
 
-@app.callback(
+@dash_app.callback(
     Output('pca-df', 'data'),
     Input('mzml-checklist', 'value'),
     Input('intermediate-value', 'data')
@@ -806,7 +810,7 @@ def update_pca_dataframes(selected_mzml, make_sure_to_start):
 
 
 
-@app.callback(
+@dash_app.callback(
     Output('pca-plot', 'figure'),
     Input('pca-df', 'data')
 )
@@ -860,7 +864,7 @@ def create_pca_plot(data):
 
 
 
-@app.callback(
+@dash_app.callback(
     Output('tic-stats_plot', 'figure'),
     Input('mzml-checklist', 'value'),
     Input('relative-to-median-checkbox', 'value')
@@ -901,7 +905,7 @@ def TIC_stats_plot(selected_mzml, relative_to_median_checkbox_value):
     return fig
 
 
-@app.callback(
+@dash_app.callback(
     Output('tic-plot', 'figure'),
     Input('mzml-checklist', 'value'),
     Input('TIC-types', 'value')
@@ -949,7 +953,7 @@ def TIC_plot(selected_mzml, TIC_type):
 
 
 
-@app.callback(
+@dash_app.callback(
     Output('subplots', 'figure'),
     Input('mzml-checklist', 'value'),
     Input('set-dropdown', 'value'),
@@ -1028,7 +1032,7 @@ def update_plots(selected_mzml, selected_set, scale_option):
 
     return fig
 
-@app.callback(
+@dash_app.callback(
     Output('store-df', 'data'),
     [Input('update-button', 'n_clicks')],
     [State('peak-count-slider', 'value'),
@@ -1041,7 +1045,7 @@ def update_dataframe(n_clicks, peak_count_threshold, purity_threshold, intensity
     return updated_df.to_dict('records')
 
 
-@app.callback(
+@dash_app.callback(
     Output('ms2-trends', 'figure'),
     Input('store-df', 'data'),
     State('peak-count-slider', 'value'),
@@ -1085,7 +1089,7 @@ def make_ms2trend_figure(df_dict, peak_count_threshold, purity_threshold, intens
 
 
 
-@app.callback(
+@dash_app.callback(
     Output('ms2-plot2', 'figure'),
     Input('store-df', 'data'),
     Input('mzml-file-dropdown', 'value'),
@@ -1178,4 +1182,4 @@ def make_MS2_map(df_input, selected_mzml, plot_x, plot_y, log_x, log_y, peak_cou
 
 # Run app
 if __name__ == '__main__':
-    app.run_server(debug=True)
+    dash_app.run_server(debug=True)
