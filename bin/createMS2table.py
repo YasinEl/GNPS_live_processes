@@ -96,7 +96,7 @@ def purity_without_isotopes(isolated_mzs, feature_isotopes, isolated_ints, is_wi
 
     purity = precursor_int / total_intensity 
     
-    return purity
+    return round(purity,2)
 
 if __name__ == '__main__':
     # Argument parsing (no change here)
@@ -122,19 +122,20 @@ if __name__ == '__main__':
     data = []
     prev_MS1_spectrum = None
     associated_features = set() # Keep track of features that are associated with an MS2 spectrum
-    
+    ms1_id = 0
     for spectrum in exp:
         if spectrum.getMSLevel() == 1:
             prev_MS1_spectrum = spectrum
+            ms1_id = ms1_id+1
 
         elif spectrum.getMSLevel() == 2 and prev_MS1_spectrum:
 
-            ms_level = spectrum.getMSLevel()
+            ms_level = int(spectrum.getMSLevel())
             rt = spectrum.getRT() /60
             precursor = spectrum.getPrecursors()[0]
-            collision_energy = precursor.getMetaValue(b'collision energy')
-            precursor_mz = precursor.getMZ()
-            precursor_charge = precursor.getCharge()
+            collision_energy = round(precursor.getMetaValue(b'collision energy'),1)
+            precursor_mz = round(precursor.getMZ(),4)
+            precursor_charge = int(precursor.getCharge())
 
             mzs, ints = spectrum.get_peaks()
 
@@ -194,11 +195,12 @@ if __name__ == '__main__':
                     precursor_intensity_in_ms2 = intensity
                     break
 
-            associated_feature_label = "N/A"
+            associated_feature_label = None
             temporal_distance_score = None
             feature_FWHM = None
             prec_apex_ratio = None
             purity = None
+            feature_label = None
 
             # Find the relevant time bins to search in
             relevant_bin_ids = [int((rt // 1) + i) for i in range(-1, 2)]  # Search in neighboring bins as well
@@ -230,8 +232,11 @@ if __name__ == '__main__':
                 if is_within_ppm(mz_feature, precursor_mz, ppm_tr) and rt > start_time_feature and rt < end_time_feature:
                     
                     associated_feature_label = feature.getUniqueId()
-                    apex_intensity = feature.getMetaValue("max_height")
-                    feature_FWHM = feature.getMetaValue("FWHM")
+                    apex_intensity = int(feature.getMetaValue("max_height"))
+                    feature_FWHM = round(feature.getMetaValue("FWHM"),2)
+                    feature_label = feature.getMetaValue("label")
+
+
 
                     feature_isotopes = feature.getMetaValue("masstrace_centroid_mz")
                     
@@ -245,18 +250,19 @@ if __name__ == '__main__':
                     # Calculate the temporal distance score
                     #feature_duration = end_time_feature - start_time_feature
                     #temporal_distance_score = (rt - rt_feature) / feature_duration if feature_duration else 0
-                    temporal_distance_score = (rt - rt_feature) * 60
-                    prec_apex_ratio = precursor_int/apex_intensity
+                    temporal_distance_score = round((rt - rt_feature) * 60,0)
+                    prec_apex_ratio = round(precursor_int/apex_intensity,1)
                     break
 
-            data.append([ms_level, rt, precursor_mz, collision_energy, precursor_charge, max_fragment_intensity, precursor_int, purity, peaks_count, peaks_count_filtered, associated_feature_label, apex_intensity, feature_FWHM, temporal_distance_score, prec_apex_ratio, precursor_intensity_in_ms2])
+            data.append([ms1_id, ms_level, rt, precursor_mz, collision_energy, precursor_charge, max_fragment_intensity, precursor_int, purity, peaks_count, peaks_count_filtered, associated_feature_label, apex_intensity, feature_FWHM, temporal_distance_score, prec_apex_ratio, precursor_intensity_in_ms2, feature_label])
 
 
     for feature in feature_map:
         if feature.getUniqueId() not in associated_features:
+            ms1_id = None
             ms_level = None
             rt = feature.getRT() / 60
-            precursor_mz = feature.getMZ()
+            precursor_mz = round(feature.getMZ(),4)
             collision_energy = None
             precursor_charge = None
             max_fragment_intensity = None
@@ -265,15 +271,16 @@ if __name__ == '__main__':
             peaks_count = None
             peaks_count_filtered = None
             associated_feature_label = feature.getUniqueId()
-            apex_intensity = feature.getMetaValue("max_height")
-            feature_FWHM = feature.getMetaValue("FWHM")
+            apex_intensity = int(feature.getMetaValue("max_height"))
+            feature_FWHM = round(feature.getMetaValue("FWHM"),2)
             precursor_intensity_in_ms2 = None
             temporal_distance_score = None
             prec_apex_ratio = None
+            feature_label = feature.getMetaValue("label")
 
-            data.append([ms_level, rt, precursor_mz, collision_energy, precursor_charge, max_fragment_intensity, precursor_int, purity, peaks_count, peaks_count_filtered, associated_feature_label, apex_intensity, feature_FWHM, temporal_distance_score, prec_apex_ratio, precursor_intensity_in_ms2])
+            data.append([ms1_id, ms_level, rt, precursor_mz, collision_energy, precursor_charge, max_fragment_intensity, precursor_int, purity, peaks_count, peaks_count_filtered, associated_feature_label, apex_intensity, feature_FWHM, temporal_distance_score, prec_apex_ratio, precursor_intensity_in_ms2, feature_label])
     
-    df = pd.DataFrame(data, columns=['MS Level', 'Retention Time (min)', 'Precursor m/z', 'Collision energy', 'Precursor charge', 'Max fragment intensity', 'Precursor intensity', 'Purity', 'Peak count', 'Peak count (filtered)', 'Associated Feature Label', 'Feature Apex intensity', 'FWHM', 'Rel Feature Apex distance', 'Prec-Apex intensity ratio', 'Precursor intensity in MS2'])
+    df = pd.DataFrame(data, columns=['MS1_spec_id', 'MS Level', 'Retention Time (min)', 'Precursor m/z', 'Collision energy', 'Precursor charge', 'Max fragment intensity', 'Precursor intensity', 'Purity', 'Peak count', 'Peak count (filtered)', 'Associated Feature Label', 'Feature Apex intensity', 'FWHM', 'Rel Feature Apex distance', 'Prec-Apex intensity ratio', 'Precursor intensity in MS2', 'feature_label'])
     
     df = add_unique_mz_col(df, ppm_val = ppm_tr)
     

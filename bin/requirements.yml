@@ -12,6 +12,7 @@ dependencies:
   - openpyxl
   - pip:
     - molmass
+    - sqlalchemy
     - pyteomics==4.6.2
     - xmltodict
     - pyopenms==3.0.0

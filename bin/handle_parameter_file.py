@@ -67,6 +67,7 @@ def prepare_parameter_file(file_path, mzml_path):
                    'df_regex': df_regex,
                    'MS1 precision': int(df_general_params.loc['MS1 precision', 'value']),
                    'MS2 precision': int(df_general_params.loc['MS2 precision', 'value']),
+                   'Maximum FWHM': int(df_general_params.loc['Maximum FWHM', 'value']),
                    'Lower mz of mass range': int(df_general_params.loc['Lower mz of mass range', 'value']),
                    'Upper mz of mass range': int(df_general_params.loc['Upper mz of mass range', 'value'])}
        

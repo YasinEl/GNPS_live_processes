@@ -70,11 +70,29 @@ if __name__ == "__main__":
                 #collect EICs
                 eic_data = feature['subordinate']['feature'][0]['convexhull']["pt"]
 
-                eic_data_prep = {
-                    "rt": [float(item["@x"]) for item in eic_data],
-                    "intensity": [float(item["@y"]) for item in eic_data]
-                    }
-                eics.append(eic_data_prep)
+                # Convert to float and pair rt and intensity
+                eic_data_prep = list(zip(
+                    [float(item["@x"]) for item in eic_data],
+                    [float(item["@y"]) for item in eic_data]
+                ))
+
+                # Sort by intensity in descending order
+                eic_data_prep.sort(key=lambda x: x[1], reverse=True)
+
+                # Take the top 30 highest intensity values
+                eic_data_prep = eic_data_prep[:30]
+
+                # Sort by rt in ascending order
+                eic_data_prep.sort(key=lambda x: x[0])
+
+                # Separate rt and intensity back into their own lists
+                eic_data_filtered = {
+                    "rt": [round(item[0],2) for item in eic_data_prep],
+                    "intensity": [round(item[1],0) for item in eic_data_prep]
+                }
+
+                eics.append(eic_data_filtered)
+
 
 
         elif int(data['featureMap']['featureList']['@count']) == 1 and features is not None:
@@ -85,11 +103,29 @@ if __name__ == "__main__":
             #collect EICs
             eic_data = features['subordinate']['feature'][0]['convexhull']["pt"]
 
-            eic_data_prep = {
-                "rt": [float(item["@x"]) for item in eic_data],
-                "intensity": [float(item["@y"]) for item in eic_data]
-                }
-            eics.append(eic_data_prep)
+            # Convert to float and pair rt and intensity
+            eic_data_prep = list(zip(
+                [float(item["@x"]) for item in eic_data],
+                [float(item["@y"]) for item in eic_data]
+            ))
+
+            # Sort by intensity in descending order
+            eic_data_prep.sort(key=lambda x: x[1], reverse=True)
+
+            # Take the top 30 highest intensity values
+            eic_data_prep = eic_data_prep[:30]
+
+            # Sort by rt in ascending order
+            eic_data_prep.sort(key=lambda x: x[0])
+
+            # Separate rt and intensity back into their own lists
+            eic_data_filtered = {
+                "rt": [round(item[0],2) for item in eic_data_prep],
+                "intensity": [int(item[1]) for item in eic_data_prep]
+            }
+
+            eics.append(eic_data_filtered)
+
 
 
         
@@ -106,9 +142,9 @@ if __name__ == "__main__":
                     "type": "standards",
                     "collection": collection_name,
                     "reports": {
-                        "MZ": float(row['MZ']),
-                        "RT": float(row['peak_apex_position']),
-                        "Height": float(row['peak_apex_int']),
+                        "MZ": round(float(row['MZ']),4),
+                        "RT": round(float(row['peak_apex_position']),0),
+                        "Height": row['peak_apex_int'],
                         "FWHM": float(row['width_at_50']),
                         "EIC": eics[idx]
                     }
