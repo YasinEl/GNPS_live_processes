@@ -71,10 +71,10 @@ process ApplyFeatureFinderMetabo {
     ms1ppm=\$(echo "${general_parameters}" | cut -d',' -f1)
     max_fwhm=\$(echo "${general_parameters}" | cut -d',' -f3)
 
-    FeatureFinderMetabo -in ${mzml_file} -out features.featureXML -algorithm:epd:width_filtering auto -threads 10 \
+    FeatureFinderMetabo -in ${mzml_file} -out features.featureXML -algorithm:epd:width_filtering auto -threads 1 \
     -algorithm:ffm:report_convex_hulls true  -algorithm:ffm:mz_scoring_by_elements true -algorithm:ffm:elements CHNOPSClNaKFBrLiMgSiCaCrFeCuSe \
-    -algorithm:common:chrom_fwhm 2 -algorithm:ffm:use_smoothed_intensities false -algorithm:mtd:mass_error_ppm \$ms1ppm \
-    -algorithm:common:noise_threshold_int 1000 -algorithm:ffm:remove_single_traces true -algorithm:mtd:quant_method max_height \
+    -algorithm:common:chrom_fwhm 3 -algorithm:ffm:use_smoothed_intensities false -algorithm:mtd:mass_error_ppm \$ms1ppm \
+    -algorithm:common:noise_threshold_int 10000 -algorithm:ffm:remove_single_traces true -algorithm:mtd:quant_method max_height \
     -algorithm:mtd:min_trace_length 3 -algorithm:ffm:charge_upper_bound 20 -algorithm:ffm:local_rt_range 1 -algorithm:ffm:local_mz_range 15
     """
 }

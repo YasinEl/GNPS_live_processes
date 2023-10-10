@@ -55,7 +55,8 @@ if __name__ == "__main__":
 
     #get triggered features
     detected_features = set(df_features['label'])
-    triggered_features = set(df_ms2['feature_label'].dropna())
+    triggered_features = set(df_ms2[df_ms2['Peak count (filtered)'] >= 4]['feature_label'].dropna())
+
 
     # Initialize 'MS2_grade' column with 'vacant' where 'feature_label' is None
     df_ms2['MS2_grade'] = None
@@ -188,7 +189,7 @@ if __name__ == "__main__":
         "collection": "feature_inventory",
         "reports": {
             "Feature_count": len(df_features),
-            "Triggered_features": (len(triggered_features) / len(detected_features)) * 100,
+            "Triggered_features": len(triggered_features),
             "Triggered_lowest_int_percentile": MS2_quality_percentile,
             "Features_above_percentile": len(df_features[df_features['intensity'] >= MS2_quality_percentile]),
             "Features_below_percentile": len(df_features[df_features['intensity'] < MS2_quality_percentile]),
@@ -199,9 +200,11 @@ if __name__ == "__main__":
             "Obstacels_above_percentile_successfull_scans": len(successful_rows),
             "Obstacels_above_percentile_No_scans": len(no_scans),
             "Percentage_of_vacant_obstacles_more_than_5": percentage_more_than_5,
+            "Feature_intensities_P3": np.percentile(df_features['intensity'],3),
             "Feature_intensities_Q1": np.percentile(df_features['intensity'],25),
             "Feature_intensities_Q2": np.percentile(df_features['intensity'],50),
             "Feature_intensities_Q3": np.percentile(df_features['intensity'],75),
+            "Feature_intensities_P97": np.percentile(df_features['intensity'],97),
             "Feature_FWHM_Q1": np.percentile(df_features['FWHM'],25),
             "Feature_FWHM_Q2": np.percentile(df_features['FWHM'],50),
             "Feature_FWHM_Q3": np.percentile(df_features['FWHM'],75)
