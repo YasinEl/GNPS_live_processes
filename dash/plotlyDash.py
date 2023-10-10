@@ -125,6 +125,17 @@ def render_tab(tab_value):
                             dcc.Graph(id='reasons_above_int_thr', style={'height': '400px', 'marginBottom': '10px'}),
                         ], style={'border': '1px solid grey', 'border-radius': '8px', 'padding': '10px',
                                   'marginBottom': '10px'}),
+                        html.Div([
+                            html.Div(
+                                "Origin of vacant and redundant scans triggered while features were missed.",
+                                style={'textAlign': 'center', 'padding': '5px',
+                                       'backgroundColor': 'rgba(128, 128, 128, 0.1)',
+                                       'marginBottom': '20px'}),
+                            dcc.Graph(id='vacant-scan-plot', style={'height': '400px', 'marginBottom': '10px'}),
+                        ], style={'border': '1px solid grey', 'border-radius': '8px', 'padding': '10px',
+                                  'marginBottom': '10px'}),
+                        #when looking at rt dimension in 10% bins. where are the missing MS2s
+
                     ], style={'border': '2px solid grey', 'border-radius': '12px', 'padding': '15px',
                               'marginBottom': '20px'}),
                 ])
@@ -213,6 +224,61 @@ def update_checklist_options(update_check, select_clicks, unselect_clicks, text_
                         new_selected_mzmls.add(option['value'])
             updated_selection = list(new_selected_mzmls)
         return updated_options, updated_selection
+
+
+
+@app.callback(
+    Output('vacant-scan-plot', 'figure'),
+    [Input('mzml-checklist', 'value')]
+)
+def obstacle_detail_plot(mzml_checklist):
+    if mzml_checklist is None:
+        raise dash.exceptions.PreventUpdate
+
+    engine = create_engine(f'sqlite:///{db_path}')
+    mzml_placeholders = ', '.join(['?'] * len(mzml_checklist))
+    query = f"SELECT mzml_file, datetime_order, Percentage_of_vacant_obstacles_more_than_10, Percentage_of_redundant_scans_after_apex " \
+            f"FROM untargetedSummary " \
+            f"WHERE mzml_file IN ({mzml_placeholders})"
+
+    df_feature_count = pd.read_sql(query, engine, params=tuple(mzml_checklist))
+    engine.dispose()
+
+    df_feature_count['datetime_order_u'] = range(1, len(df_feature_count) + 1)
+
+    # Rename columns for better readability
+    df_feature_count.rename(columns={
+        'Percentage_of_vacant_obstacles_more_than_10': 'Vacant scans of precursor MZs tiggered >= 10 times [%]',
+        'Percentage_of_redundant_scans_after_apex': 'Redundant scans triggered after after feature apex [%]'
+    }, inplace=True)
+
+    # Create the figure
+    fig = go.Figure()
+
+    # Add traces for each variable
+    fig.add_trace(go.Scatter(x=df_feature_count['datetime_order_u'], y=df_feature_count['Vacant scans of precursor MZs tiggered >= 10 times [%]'],
+                             mode='lines', name='Vacant scans of precursor MZs tiggered >= 10 times [%]',
+                             hovertext=df_feature_count['mzml_file']))
+
+    fig.add_trace(go.Scatter(x=df_feature_count['datetime_order_u'], y=df_feature_count['Redundant scans triggered after after feature apex [%]'],
+                             mode='lines', name='Redundant scans triggered after after feature apex [%]',
+                             hovertext=df_feature_count['mzml_file']))
+
+    # Update layout
+    fig.update_layout(
+        xaxis_title="Injection order",
+        yaxis_title="Value [%]",
+        legend_title_text='',
+        margin=dict(t=10),
+        legend=dict(
+            x=0.5,
+            y=1.1,
+            xanchor='center',
+            orientation='h'
+        ),
+    )
+
+    return fig
 
 
 @app.callback(

@@ -89,9 +89,11 @@ if __name__ == "__main__":
     redundant_rows = []
     vacant_rows = []
     vacant_mz = []
+    rel_apex_distance = []
     no_scans = []
     successful_rows = []
     added_vacant_rows = set()
+    added_relApex_rows = set()
     # Loop through rows where MS2_grade is 'missing'
     for idx, row in df_ms2[df_ms2['MS2_grade'] == 'missing'].iterrows():
         rt = row['Retention Time (min)']
@@ -120,31 +122,49 @@ if __name__ == "__main__":
         vacant_mz.extend(vacant_mz_values)
 
 
-        if counts.get('redundant', 0) == 0 and counts.get('vacant', 0) == 0:
+        # Update rel apex distance list with unique rows
+        redundant_filtered_rows = filtered_rows[(filtered_rows['MS2_grade'] == 'redundant') & (~filtered_rows.index.isin(added_relApex_rows))]
+        redundant_rel_apex_distance_values = redundant_filtered_rows['Rel Feature Apex distance'].tolist()
+        rel_apex_distance.extend(redundant_rel_apex_distance_values)
+
+        if counts.get('redundant', 0) == 0 and counts.get('vacant', 0) == 0 and counts.get('successful', 0) == 0:
             no_scans.append('1')
 
         added_vacant_rows.update(vacant_filtered_rows.index.tolist())
+        added_relApex_rows.update(redundant_filtered_rows.index.tolist())
 
     # Remove duplicates from the lists
     successful_rows = list(set(successful_rows))
     redundant_rows = list(set(redundant_rows))
     vacant_rows = list(set(vacant_rows))
 
+    #find vacant common mz events
     vacantMZ_count_table = Counter(vacant_mz)
-        
+    
     total_count = len(vacant_mz)
-    less_than_5_count = 0
-    more_than_5_count = 0
+    less_than_x_count = 0
+    more_than_x_count = 0
 
     for value, count in vacantMZ_count_table.items():
-        if count < 5:
-            less_than_5_count += count
-        elif count > 5:
-            more_than_5_count += count
+        if count < 10:
+            less_than_x_count += count
+        elif count >= 10:
+            more_than_x_count += count
 
-    percentage_less_than_5 = (less_than_5_count / total_count) * 100
-    percentage_more_than_5 = (more_than_5_count / total_count) * 100
+    percentage_less_than_x = (less_than_x_count / total_count) * 100
+    percentage_more_than_x = (more_than_x_count / total_count) * 100
 
+    #check if redundant scans before or after apex
+    redundant_scan_before_apex = 0
+    redundant_scan_after_apex = 0
+
+    for value in rel_apex_distance:
+        if value < 0:
+            redundant_scan_before_apex += count
+        elif value > 0:
+            redundant_scan_after_apex += count
+
+    percentage_redundant_scan_after_apex = (redundant_scan_after_apex / (redundant_scan_before_apex + redundant_scan_after_apex)) * 100
 
 
     #get lowest triggered features
@@ -199,7 +219,8 @@ if __name__ == "__main__":
             "Obstacels_above_percentile_vacant_scans": len(vacant_rows),
             "Obstacels_above_percentile_successfull_scans": len(successful_rows),
             "Obstacels_above_percentile_No_scans": len(no_scans),
-            "Percentage_of_vacant_obstacles_more_than_5": percentage_more_than_5,
+            "Percentage_of_vacant_obstacles_more_than_10": percentage_more_than_x,
+            "Percentage_of_redundant_scans_after_apex": percentage_redundant_scan_after_apex,
             "Feature_intensities_P3": np.percentile(df_features['intensity'],3),
             "Feature_intensities_Q1": np.percentile(df_features['intensity'],25),
             "Feature_intensities_Q2": np.percentile(df_features['intensity'],50),
