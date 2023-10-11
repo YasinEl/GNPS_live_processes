@@ -74,6 +74,8 @@ if __name__ == "__main__":
             "TIC_sum": df_MS1['all MZbins'].sum(),
             "TIC_max": df_MS1['all MZbins'].max(),
             "TIC_median": df_MS1['all MZbins'].median(),
+            "first_MS1_scan_rt": df_MS1['rt'].min(),
+            "last_MS1_scan_rt": df_MS1['rt'].max(),
             "TIC_bins": mz_bins,
             "TIC_metrics": tic_metrics,
             "Feature_metrics": feature_metrics,

@@ -56,6 +56,7 @@ app.layout = html.Div([
             width=2),
         dbc.Col([
             dbc.Tabs([
+                dbc.Tab(label='Summary', tab_id='summary-tab'),
                 dbc.Tab(label='Untargeted', tab_id='untargeted-tab'),
                 dbc.Tab(label='Targeted', tab_id='targeted-tab'),
             ], id='tabs', active_tab='untargeted-tab'),
@@ -118,6 +119,15 @@ def render_tab(tab_value):
                                   'marginBottom': '10px'}),
                         html.Div([
                             html.Div(
+                                "Features lacking MS2 scans above 3rd percentile: Retention time distribution of features with missing MS2 scans.",
+                                style={'textAlign': 'center', 'padding': '5px',
+                                       'backgroundColor': 'rgba(128, 128, 128, 0.1)',
+                                       'marginBottom': '20px'}),
+                            dcc.Graph(id='missing-ms2-rt-dist-plot', style={'height': '400px', 'marginBottom': '10px'}),
+                        ], style={'border': '1px solid grey', 'border-radius': '8px', 'padding': '10px',
+                                  'marginBottom': '10px'}),
+                        html.Div([
+                            html.Div(
                                 "Features lacking MS2 scans above 3rd percentile: MS2 scans which have been acquired instead of the missed MS2 scans.",
                                 style={'textAlign': 'center', 'padding': '5px',
                                        'backgroundColor': 'rgba(128, 128, 128, 0.1)',
@@ -127,7 +137,7 @@ def render_tab(tab_value):
                                   'marginBottom': '10px'}),
                         html.Div([
                             html.Div(
-                                "Origin of vacant and redundant scans triggered while features were missed.",
+                                "Features lacking MS2 scans above 3rd percentile: Origin of vacant and redundant scans triggered while features were missed.",
                                 style={'textAlign': 'center', 'padding': '5px',
                                        'backgroundColor': 'rgba(128, 128, 128, 0.1)',
                                        'marginBottom': '20px'}),
@@ -225,6 +235,98 @@ def update_checklist_options(update_check, select_clicks, unselect_clicks, text_
             updated_selection = list(new_selected_mzmls)
         return updated_options, updated_selection
 
+
+
+@app.callback(
+    Output('missing-ms2-rt-dist-plot', 'figure'),
+    [Input('mzml-checklist', 'value')]
+)
+def missing_ms2_rt_dist_plot(mzml_checklist):
+    if mzml_checklist is None:
+        raise dash.exceptions.PreventUpdate
+
+    engine = create_engine(f'sqlite:///{db_path}')
+    mzml_placeholders = ', '.join(['?'] * len(mzml_checklist))
+    query = f"SELECT mzml_file, datetime_order, Missed_triggers_above_percentile_perRT_10p, last_MS1_scan_rt " \
+            f"FROM untargetedSummary " \
+            f"WHERE mzml_file IN ({mzml_placeholders})"
+
+    df_feature_count = pd.read_sql(query, engine, params=tuple(mzml_checklist))
+    engine.dispose()
+
+    df_feature_count['datetime_order_u'] = range(1, len(df_feature_count) + 1)
+
+    # Convert the comma-separated counts into a list of integers
+    df_feature_count['Missed_triggers_above_percentile_perRT_10p'] = df_feature_count['Missed_triggers_above_percentile_perRT_10p'].apply(
+        lambda x: list(map(int, x.split(','))))
+
+    # Create a new DataFrame for plotting
+    plot_df = pd.DataFrame(columns=['datetime_order_u', 'bin_midpoint', 'mzml_file'])
+
+    # Temporary list to hold new rows
+    new_rows = []
+
+    for i, row in df_feature_count.iterrows():
+        max_rt = row['last_MS1_scan_rt']
+        interval = max_rt * 0.1
+        mzml_file = row['mzml_file']
+
+        for j, val in enumerate(row['Missed_triggers_above_percentile_perRT_10p']):
+            bin_start = j * interval
+            bin_end = (j + 1) * interval
+            bin_midpoint = (bin_start + bin_end) / 2
+
+            new_row = {
+                'datetime_order_u': row['datetime_order_u'],
+                'bin_midpoint': bin_midpoint,
+                'mzml_file': mzml_file
+            }
+
+            # Duplicate the row based on its value (precomputed count)
+            new_rows.extend([new_row] * val)
+
+    # Convert list of new rows to DataFrame
+    new_rows_df = pd.DataFrame(new_rows)
+    new_rows_df = new_rows_df.dropna(how='all')
+
+    new_rows_df = new_rows_df.dropna(axis=1, how='all')
+    plot_df = plot_df.dropna(axis=1, how='all')
+
+
+    # Concatenate to original DataFrame
+    plot_df = pd.concat([plot_df, new_rows_df], ignore_index=True)
+    plot_df['bin_midpoint'] = plot_df['bin_midpoint'] /60
+
+    # Create the violin plot
+    fig = px.violin(
+        plot_df,
+        x='datetime_order_u',
+        y='bin_midpoint',
+        box=False,
+        points=False,
+        hover_data=['mzml_file'],
+    )
+
+    # Update the spanmode for each violin
+    for trace in fig.data:
+        if trace.type == 'violin':
+            trace.spanmode = 'hard'
+
+    # Update layout
+    fig.update_layout(
+        xaxis_title="Injection order",
+        yaxis_title="Retention time [min]",
+        legend_title_text='',
+        margin=dict(t=10),
+        legend=dict(
+            x=0.5,
+            y=1.1,
+            xanchor='center',
+            orientation='h'
+        ),
+    )
+
+    return fig
 
 
 @app.callback(
@@ -338,8 +440,6 @@ def get_missingMS2_obstacles_above_thr(mzml_checklist):
     return fig
 
 
-
-
 @app.callback(
     Output('features_without_ms2_by_int', 'figure'),
     [Input('mzml-checklist', 'value')]
@@ -411,9 +511,6 @@ def feature_count_bars(mzml_checklist):
     engine.dispose()
 
     df_feature_count['datetime_order_u'] = range(1, len(df_feature_count) + 1)
-
-    # Sort the DataFrame by datetime_order
-    #df_feature_count = df_feature_count.sort_values('datetime_order')
 
     # Calculate the non-triggered features
     df_feature_count['Non_triggered_features'] = df_feature_count['Feature_count'] - df_feature_count['Triggered_features']
@@ -518,6 +615,7 @@ def feature_intensity_boxplots(mzml_checklist):
     )
 
     return fig
+
 
 
 # Run app

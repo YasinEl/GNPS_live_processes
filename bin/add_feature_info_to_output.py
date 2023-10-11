@@ -187,6 +187,31 @@ if __name__ == "__main__":
         (df_ms2['Feature Apex intensity'] < MS2_quality_percentile) &
         (df_ms2['MS Level'].isna())
     ]
+
+
+    #get first and last RT for violine plots
+    for metric_dict in output_json["metrics"]:
+        if metric_dict["name"] == "MS1_inventory":
+            first_MS1_scan_rt_value = metric_dict["reports"]["first_MS1_scan_rt"] /60
+            last_MS1_scan_rt_value = metric_dict["reports"]["last_MS1_scan_rt"] /60
+            break
+
+    # count in each 10% interval
+    total_rt_range = last_MS1_scan_rt_value - first_MS1_scan_rt_value
+    interval = total_rt_range * 0.1
+    bins = [first_MS1_scan_rt_value + i * interval for i in range(11)]    
+    df_missed_features_above_percentile = df_missed_features_above_percentile.copy()
+    df_missed_features_above_percentile['bin'] = pd.cut(df_missed_features_above_percentile['Retention Time (min)'], bins, right=False)
+    count_in_bins_above = df_missed_features_above_percentile['bin'].value_counts().sort_index()
+    count_list_above = [str(count) for count in count_in_bins_above]
+    count_missing_abovePercentile_10p = ','.join(count_list_above)
+
+    # Count the number of entries in each bin for df_missed_features_below_percentile
+    df_missed_features_below_percentile['bin'] = pd.cut(df_missed_features_below_percentile['Retention Time (min)'], bins, right=False)
+    count_in_bins_below = df_missed_features_below_percentile['bin'].value_counts().sort_index()
+    count_list_below = [str(count) for count in count_in_bins_below]
+    count_missing_belowPercentile_10p = ','.join(count_list_below)
+
     ####
     #Are we collecting MS2s for enough features
     ####
@@ -215,6 +240,8 @@ if __name__ == "__main__":
             "Features_below_percentile": len(df_features[df_features['intensity'] < MS2_quality_percentile]),
             "Missed_triggers_above_percentile": len(df_missed_features_above_percentile),
             "Missed_triggers_below_percentile": len(df_missed_features_below_percentile),
+            "Missed_triggers_above_percentile_perRT_10p": count_missing_abovePercentile_10p,
+            "Missed_triggers_below_percentile_perRT_10p": count_missing_belowPercentile_10p,
             "Obstacles_above_percentile_redundant_scans": len(redundant_rows),
             "Obstacels_above_percentile_vacant_scans": len(vacant_rows),
             "Obstacels_above_percentile_successfull_scans": len(successful_rows),
@@ -232,8 +259,6 @@ if __name__ == "__main__":
 
         }
     }
-
-    print(metric)
 
     output_json['metrics'].append(metric)
 

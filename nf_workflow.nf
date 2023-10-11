@@ -43,6 +43,7 @@ process Prepare_json_for_output_collection {
 
     input:
     path mzml_file
+    path parameter_json
     val toolFolder
 
     output:
@@ -50,7 +51,7 @@ process Prepare_json_for_output_collection {
 
     script:
     """
-    python $toolFolder/prepare_json_for_output_collection.py --filename ${mzml_file} --datetime '${params.timeOfUpload}'
+    python $toolFolder/prepare_json_for_output_collection.py --filename ${mzml_file} --param_json ${parameter_json} --datetime '${params.timeOfUpload}'
     """
 }
 
@@ -337,7 +338,7 @@ workflow {
 
     prepared_parameters = HandleParameterFile(parameter_file_ch, mzml_files_ch, TOOL_FOLDER)
     paramList = getParametersFromJson(prepared_parameters)
-    output_json = Prepare_json_for_output_collection(mzml_files_ch, TOOL_FOLDER) 
+    output_json = Prepare_json_for_output_collection(mzml_files_ch, prepared_parameters, TOOL_FOLDER) 
 
     //targeted standard extraction
     PrepareForFeatureFinderMetaboIdent(prepared_parameters, TOOL_FOLDER)
