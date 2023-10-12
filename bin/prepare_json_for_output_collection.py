@@ -57,7 +57,7 @@ def main():
     # Filter rows and check for substrings in 'base_name'
     qc_rows = df_params[df_params['parameters'] == '#QC_set_pattern']
     for pattern in qc_rows['pattern']:
-        if pattern in base_name:
+        if pattern.lower() in base_name.lower():
             QC_type = pattern
             break
 

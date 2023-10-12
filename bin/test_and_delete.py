@@ -2,69 +2,175 @@ import json
 import pandas as pd
 import argparse
 from io import StringIO
+import numpy as np
 
-def read_custom_csv(file_path):
-    with open(file_path, 'r') as file:
-        lines = file.readlines()
-        header_index = next(i for i, line in enumerate(lines) if '#FEATURE' in line)
-        data_lines = [lines[header_index]]
-        for line in lines[header_index+1:]:
-            if line.strip().startswith('#'):
-                continue
-            data_lines.append(line)
-        df = pd.read_csv(StringIO(''.join(data_lines)), header=0)
+
+
+def create_filtered_table(json_file, name=None, type_=None, collection=None, include_keys=None):
+    with open(json_file, 'r') as f:
+        data = json.load(f)
+
+    table_data = []
+
+    for entry in data:
+        mzml_name = entry.get('mzml_name', None)
+        time_of_upload = entry.get('time_of_upload', None)
+        metrics = entry.get('metrics', [])
+
+        for metric in metrics:
+            metric_name = metric.get('name', None)
+            metric_type = metric.get('type', None)
+            metric_collection = metric.get('collection', None)
+
+            if ((name is None or name == metric_name) and
+                    (type_ is None or type_ == metric_type) and
+                    (collection is None or collection == metric_collection)):
+
+                row = {
+                    'mzml_file': mzml_name,
+                    'date_time': time_of_upload,
+                    'name': metric_name,
+                    'type': metric_type,
+                    'collection': metric_collection
+                }
+
+                reports = metric.get('reports', {})
+
+                for key, value in reports.items():
+                    if include_keys is None:
+                        if not isinstance(value, (list, dict)):
+                            row[key] = value
+                    else:
+                        if key in include_keys:
+                            if isinstance(value, dict):
+                                if isinstance(list(value.values())[0], dict):
+                                    for key2, value2 in value.items():
+                                        row[key2] = list(value2.values())
+                                        if not list(value2.keys())[0][0].isdigit():
+                                            row['variable'] = list(value2.keys())
+
+                                else:
+                                    row.update(value)
+                            else:
+                                row[key] = value
+
+                table_data.append(row)
+
+    df = pd.DataFrame(table_data)
+
+    # Identify columns containing lists
+    list_columns = [col for col in df.columns if df[col].apply(isinstance, args=(list,)).any()]
+
+    # Explode the DataFrame based on list columns
+    if list_columns:
+        df = df.explode(list_columns)
+        df.reset_index(drop=True, inplace=True)
+
     return df
 
-def rename_csv(df):
-    mz_bins = []
-    new_col_names = {}
-    for col in df.columns:
-        if 'TIC_intensity' in col and '-' in col:
-            lower, upper = col.split('_')[-1].split('-')
-            mz_bins.append((float(lower), float(upper)))
-            new_col_names[col] = f'TIC_intensity_{len(mz_bins)}'
-    df.rename(columns=new_col_names, inplace=True)
-    return df, mz_bins
 
-if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="Add MS2 info to json.")
-    #parser.add_argument('--output_json_path', type=str, help="Path to the json file.")
-    parser.add_argument('--ms1_inv_csv', type=str, help="Paths to MS1 inventory csv.")
-    parser.add_argument('--feature_csv', type=str, help="Paths to feature csv.")
-    args = parser.parse_args()
 
-    #with open(args.output_json_path, 'r') as file:
-    #    output_json = json.load(file)
+json_path = '/home/yasin/yasin/projects/GNPS_live_processes/nf_output/mzml_summary_aggregation.json'
 
-    df_MS1 = pd.read_csv(args.ms1_inv_csv)
-    df_MS1, mz_bins = rename_csv(df_MS1)
-    df_features = read_custom_csv(args.feature_csv)
+df = create_filtered_table(json_path, collection='MS1_inventory', include_keys='highest_30_by_quarter_RT')
 
-    print(df_features.head)
+date_time_mapping = df.groupby('mzml_file')['date_time'].first()
+df['date_time'] = df['mzml_file'].map(date_time_mapping)
+df.sort_values(by='date_time', inplace=True)
+df['datetime_order'] = df['date_time'].rank(method='min').astype(int)
 
-    tic_metrics = {}
-    for col in df_MS1.columns:
-        if 'TIC_intensity' in col:
-            tic_metrics[col] = {
-                "TIC_sum": df_MS1[col].sum(),
-                "TIC_max": df_MS1[col].max(),
-                "TIC_median": df_MS1[col].median()
-            }
+df_meta = create_filtered_table(json_path, collection='Sample_metadata')
+df_meta = df_meta[df_meta['QC_type'] != "-"]
 
-    metric = {
-        "name": "MS1_inventory",
-        "type": "single",
-        "collection": "MS1_inventory",
-        "reports": {
-            "MS1_spectra": len(df_MS1),
-            "MS1_Features": len(df_features),
-            "TIC_bins": mz_bins,
-            "TIC_metrics": tic_metrics#,
-            #"MS1_inventory": df_MS1.to_dict()
+df = pd.merge(df, df_meta[['mzml_file', 'QC_type']], on='mzml_file', how='inner')
+
+
+output_list = []
+
+for qc_type in df['QC_type'].unique():
+    qc_df = df[df['QC_type'] == qc_type].copy()
+    qc_df.sort_values(by='datetime_order', inplace=True)
+    unique_dt_orders = qc_df['datetime_order'].unique()
+    
+    for i in range(len(unique_dt_orders) - 1):
+        order1 = unique_dt_orders[i]
+        order2 = unique_dt_orders[i + 1]
+        
+        current_dt_df = qc_df[qc_df['datetime_order'] == order1]
+        next_dt_df = qc_df[qc_df['datetime_order'] == order2]
+        
+        # Combine all rows into a single table for each DataFrame
+        current_combined_table = pd.concat(current_dt_df['highest_30_by_quarter_RT'].apply(pd.DataFrame).tolist(), ignore_index=True)
+        next_combined_table = pd.concat(next_dt_df['highest_30_by_quarter_RT'].apply(pd.DataFrame).tolist(), ignore_index=True)
+        
+        output_dict = {
+            'qctype': qc_type,
+            'mzml1': current_dt_df['mzml_file'].iloc[0],
+            'order1': order1,
+            'mzml2': next_dt_df['mzml_file'].iloc[0],
+            'order2': order2,
+            'rt_bin_0': None,
+            'rt_bin_1': None,
+            'rt_bin_2': None,
+            'int_bin_0': None,
+            'int_bin_1': None,
+            'int_bin_2': None
         }
-    }
+        
+        for third in [0, 1, 2]:
+            rt_diffs = []
+            int_diffs = []
+            
+            current_third_table = current_combined_table[current_combined_table['third'] == third]
+            next_third_table = next_combined_table[next_combined_table['third'] == third]
+            
+            for idx, row in current_third_table.iterrows():
+                matching_rows = next_third_table[
+                    (next_third_table['mz'].round(2) == row['mz'].round(2)) &
+                    (abs(next_third_table['rt'] - row['rt']) <= 15)
+                ]
+                
+                if len(matching_rows) > 1:
+                    matching_rows['rt_diff'] = abs(matching_rows['rt'] - row['rt'])
+                    best_match = matching_rows.loc[matching_rows['rt_diff'].idxmin()]
+                    rt_diffs.append(best_match['rt_diff'])
+                    best_match = best_match.copy()
+                    best_match['int_diff_percentage'] = 100 * (best_match['intensity'] - row['intensity']) / row['intensity']
+                    int_diffs.append(best_match['int_diff_percentage'])
+                elif len(matching_rows) == 1:
+                    rt_diffs.append(abs(matching_rows['rt'].iloc[0] - row['rt']))
+                    matching_rows = matching_rows.copy()
+                    matching_rows['int_diff_percentage'] = 100 * (matching_rows['intensity'] - row['intensity']) / row['intensity']
+                    int_diffs.append(matching_rows['int_diff_percentage'])
+            
+            rt_key = f'rt_bin_{third}'
+            int_key = f'int_bin_{third}'
+            output_dict[rt_key] = np.median(rt_diffs) if len(rt_diffs) >= 3 else None
+            output_dict[int_key] = np.median(int_diffs) if len(int_diffs) >= 3 else None
+        
+        output_list.append(output_dict)
 
-    #output_json['metrics'].append(metric)
+df = pd.DataFrame(output_list)
 
-    #with open('mzml_summary.json', 'w') as file:
-    #    json.dump(output_json, file, indent=4)
+
+
+# Create a new DataFrame with selected columns
+new_df = df[['qctype', 'order2', 'mzml2', 'rt_bin_0', 'rt_bin_1', 'rt_bin_2', 'int_bin_0', 'int_bin_1', 'int_bin_2']].copy()
+
+# Rename the columns
+new_df.columns = ['qctype', 'order', 'mzml', 'rt_bin_0', 'rt_bin_1', 'rt_bin_2', 'int_bin_0', 'int_bin_1', 'int_bin_2']
+
+# Add the first file of each qctype as a new row with None values for the 6 variables
+first_rows = df.drop_duplicates('qctype')[['qctype', 'order1', 'mzml1']].copy()
+first_rows.columns = ['qctype', 'order', 'mzml']
+first_rows[['rt_bin_0', 'rt_bin_1', 'rt_bin_2', 'int_bin_0', 'int_bin_1', 'int_bin_2']] = None
+
+# Concatenate the new DataFrame with the first rows
+final_df = pd.concat([new_df, first_rows], ignore_index=True)
+
+# Sort the DataFrame
+final_df.sort_values(['qctype', 'order'], inplace=True, ascending=[False, True])
+final_df.reset_index(drop=True, inplace=True)
+
+
+print(final_df)

@@ -56,10 +56,10 @@ app.layout = html.Div([
             width=2),
         dbc.Col([
             dbc.Tabs([
-                dbc.Tab(label='Summary', tab_id='summary-tab'),
-                dbc.Tab(label='Untargeted', tab_id='untargeted-tab'),
+                dbc.Tab(label='QC-stability', tab_id='qc-stability-tab'),
+                dbc.Tab(label='MS2 coverage', tab_id='ms2-coverage-tab'),
                 dbc.Tab(label='Targeted', tab_id='targeted-tab'),
-            ], id='tabs', active_tab='untargeted-tab'),
+            ], id='tabs', active_tab='ms2-coverage-tab'),
             html.Div(id='tabs-content'),
         ], width=10),
     ]),
@@ -72,7 +72,7 @@ app.layout = html.Div([
 
 
 def render_tab(tab_value):
-    if tab_value == 'untargeted-tab':
+    if tab_value == 'ms2-coverage-tab':
         return dbc.Row([
             dbc.Col([
                 dbc.Row([
@@ -156,6 +156,57 @@ def render_tab(tab_value):
         return html.Div([
 
         ], style={'marginTop': '10px'})
+    elif tab_value == 'qc-stability-tab':
+        return html.Div([
+            dbc.Col([
+                dbc.Row([
+                    html.Div([
+                        html.Div("Stability of signals in QC samples in 1., 2. and 3. third of the total retention time range", style={'textAlign': 'center', 'padding': '10px',
+                                                                              'backgroundColor': 'rgba(0, 128, 128, 0.1)',
+                                                                              'fontSize': '24px', 'fontWeight': 'bold',
+                                                                              'marginBottom': '20px'}),
+                        dbc.Row([
+                            dbc.Col([
+                                html.Label('QC type', style={'marginBottom': '5px'}),
+                                dcc.Dropdown(
+                                    id='qc-dropdown',
+                                    style={'width': '90%', 'marginBottom': '10px'}
+                                ),
+                            ], width=4, className='align-self-end')
+                        ], style={'margin-top': '10px'}),
+                        html.Div([
+                            html.Div(
+                                "Median absolute retention time change from one QC injection to the next.",
+                                style={'textAlign': 'center', 'padding': '5px',
+                                       'backgroundColor': 'rgba(128, 128, 128, 0.1)',
+                                       'marginBottom': '20px'}),
+                            dcc.Graph(id='rt-changes-qc',
+                                      style={'height': '400px', 'marginBottom': '10px'}),
+                        ], style={'border': '1px solid grey', 'border-radius': '8px', 'padding': '10px',
+                                  'marginBottom': '10px'}),
+                        html.Div([
+                            html.Div(
+                                "Median intensity change from one QC injection to the next.",
+                                style={'textAlign': 'center', 'padding': '5px',
+                                       'backgroundColor': 'rgba(128, 128, 128, 0.1)',
+                                       'marginBottom': '20px'}),
+                            dcc.Graph(id='int-changes-qc', style={'height': '400px', 'marginBottom': '10px'}),
+                        ], style={'border': '1px solid grey', 'border-radius': '8px', 'padding': '10px',
+                                  'marginBottom': '10px'}),
+                        html.Div([
+                            html.Div(
+                                "Features lacking MS2 scans above 3rd percentile: MS2 scans which have been acquired instead of the missed MS2 scans.",
+                                style={'textAlign': 'center', 'padding': '5px',
+                                       'backgroundColor': 'rgba(128, 128, 128, 0.1)',
+                                       'marginBottom': '20px'}),
+                            dcc.Graph(id='reasons_above_int_thr', style={'height': '400px', 'marginBottom': '10px'}),
+                        ], style={'border': '1px solid grey', 'border-radius': '8px', 'padding': '10px',
+                                  'marginBottom': '10px'}),
+                    ], style={'border': '2px solid grey', 'border-radius': '12px', 'padding': '15px',
+                              'marginBottom': '20px'}),
+                ])
+            ], width=12)
+        ], style={'marginTop': '10px'})
 
 @app.callback(
     Output('tabs-content', 'children'),
@@ -203,6 +254,7 @@ def update_checklist_options(update_check, select_clicks, unselect_clicks, text_
         engine = create_engine(f'sqlite:///{db_path}')
         query = "SELECT DISTINCT mzml_file, datetime_order FROM untargetedSummary"
         df_mzmls = pd.read_sql(query, engine)
+
         engine.dispose()
         #df_mzmls = df_mzmls.sort_values('datetime_order')
 
@@ -234,6 +286,132 @@ def update_checklist_options(update_check, select_clicks, unselect_clicks, text_
                         new_selected_mzmls.add(option['value'])
             updated_selection = list(new_selected_mzmls)
         return updated_options, updated_selection
+
+
+@app.callback(
+    Output('qc-dropdown', 'options'),
+    Output('qc-dropdown', 'value'),
+    Input('check_file_update', 'n_intervals'),
+    State('qc-dropdown', 'options')
+)
+def update_qc_dropdown_options(update_check, current_options):
+
+    ctx = dash.callback_context
+
+    if not ctx.triggered_id and current_options is not None:
+        raise dash.exceptions.PreventUpdate
+
+    if (ctx.triggered_id and 'check_file_update' in ctx.triggered_id) or current_options is None:
+
+        engine = create_engine(f'sqlite:///{db_path}')
+        query = "SELECT DISTINCT qctype FROM untargetedStability"
+        df_qcs = pd.read_sql(query, engine)
+        unique_qc_types = df_qcs['qctype'].unique()
+        most_common_qc = df_qcs['qctype'].mode()[0]
+        qc_type_options = [{'label': val, 'value': val} for val in unique_qc_types]
+        engine.dispose()
+
+        return qc_type_options, most_common_qc
+
+
+
+@app.callback(
+    Output('int-changes-qc', 'figure'),
+    [Input('qc-dropdown', 'value')]
+)
+def intensity_stability_untargeted(qc_dropdown_value):
+    if qc_dropdown_value is None:
+        raise dash.exceptions.PreventUpdate
+
+    engine = create_engine(f'sqlite:///{db_path}')
+    query = f"SELECT qctype, mzml_file, datetime_order, int_bin_0,  int_bin_1,  int_bin_2 " \
+            f"FROM untargetedStability " \
+            f"WHERE qctype = ?"
+
+    df_feature_count = pd.read_sql(query, engine, params=(qc_dropdown_value,))
+    engine.dispose()
+
+
+    # Rename columns for better readability
+    df_feature_count.rename(columns={
+        'int_bin_0': 'RT bin 1',
+        'int_bin_1': 'RT bin 2',
+        'int_bin_2': 'RT bin 3'
+    }, inplace=True)
+
+    highest_value = df_feature_count[['RT bin 1', 'RT bin 2', 'RT bin 3']].max().max()
+    lowest_value = df_feature_count[['RT bin 1', 'RT bin 2', 'RT bin 3']].min().min()
+
+    # Create the figure
+    fig = px.line(df_feature_count, x='datetime_order', y=['RT bin 1', 'RT bin 2', 'RT bin 3'])
+
+
+    # Update layout
+    fig.update_layout(
+        xaxis_title="Injection order",
+        yaxis_title="Intensity difference [%]",
+        legend_title_text='',
+        margin=dict(t=10),
+        legend=dict(
+            x=0.5,
+            y=1.1,
+            xanchor='center',
+            orientation='h'
+        ),
+        yaxis=dict(range=[lowest_value - 20, highest_value + 20])
+    )
+
+    return fig
+
+
+@app.callback(
+    Output('rt-changes-qc', 'figure'),
+    [Input('qc-dropdown', 'value')]
+)
+def rt_stability_untargeted(qc_dropdown_value):
+    if qc_dropdown_value is None:
+        raise dash.exceptions.PreventUpdate
+
+    engine = create_engine(f'sqlite:///{db_path}')
+    query = f"SELECT qctype, mzml_file, datetime_order, rt_bin_0,  rt_bin_1,  rt_bin_2 " \
+            f"FROM untargetedStability " \
+            f"WHERE qctype = ?"
+
+    df_feature_count = pd.read_sql(query, engine, params=(qc_dropdown_value,))
+    engine.dispose()
+
+
+    # Rename columns for better readability
+    df_feature_count.rename(columns={
+        'rt_bin_0': 'RT bin 1',
+        'rt_bin_1': 'RT bin 2',
+        'rt_bin_2': 'RT bin 3'
+    }, inplace=True)
+
+    highest_value = df_feature_count[['RT bin 1', 'RT bin 2', 'RT bin 3']].max().max()
+    lowest_value = df_feature_count[['RT bin 1', 'RT bin 2', 'RT bin 3']].min().min()
+
+    # Create the figure
+    fig = px.line(df_feature_count, x='datetime_order', y=['RT bin 1', 'RT bin 2', 'RT bin 3'])
+
+
+    # Update layout
+    fig.update_layout(
+        xaxis_title="Injection order",
+        yaxis_title="RT difference [s]",
+        legend_title_text='',
+        margin=dict(t=10),
+        legend=dict(
+            x=0.5,
+            y=1.1,
+            xanchor='center',
+            orientation='h'
+        ),
+        yaxis=dict(range=[lowest_value - 3, highest_value + 3])
+    )
+
+    return fig
+
 
 
 
@@ -440,6 +618,8 @@ def get_missingMS2_obstacles_above_thr(mzml_checklist):
     return fig
 
 
+
+
 @app.callback(
     Output('features_without_ms2_by_int', 'figure'),
     [Input('mzml-checklist', 'value')]
@@ -511,6 +691,9 @@ def feature_count_bars(mzml_checklist):
     engine.dispose()
 
     df_feature_count['datetime_order_u'] = range(1, len(df_feature_count) + 1)
+
+    # Sort the DataFrame by datetime_order
+    #df_feature_count = df_feature_count.sort_values('datetime_order')
 
     # Calculate the non-triggered features
     df_feature_count['Non_triggered_features'] = df_feature_count['Feature_count'] - df_feature_count['Triggered_features']

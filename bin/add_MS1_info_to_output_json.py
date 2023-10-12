@@ -64,6 +64,46 @@ if __name__ == "__main__":
 
     feature_metrics = calculate_feature_metrics(df_features, mz_bins)
 
+
+    df_features = df_features[['rt', 'mz', 'intensity', 'FWHM']]
+
+    ######
+    # get highest 30 per 33% of rt
+    ######
+    rt_max = df_MS1['rt'].max()
+
+    highest_30_by_third = []
+    for i in range(3):
+
+        #split table
+        lower_bound = i * 0.33 * rt_max
+        upper_bound = (i + 1) * 0.33 * rt_max
+        if lower_bound < 30 and upper_bound > 30:
+            lower_bound = 30
+        new_table = df_features[(df_features['rt'] >= lower_bound) & (df_features['rt'] < upper_bound)]
+
+        #FWHM filtering
+        median_fwhm = new_table['FWHM'].median()
+        new_table = new_table[(new_table['FWHM'] >= 0.6 * median_fwhm) & (new_table['FWHM'] <= 1.4 * median_fwhm)]
+
+        #remove things with more than 1 peak
+        new_table['mz'] = new_table['mz'].round(2)
+        new_table = new_table.drop_duplicates(subset='mz', keep=False)
+
+        #remove potential adducts
+        new_table = new_table.sort_values('intensity', ascending=False)
+        to_keep = []
+        for idx, row in new_table.iterrows():
+            if all(abs(row['rt'] - kept_row['rt']) >= 0.5 for kept_row in to_keep):
+                to_keep.append(row)
+        
+        #archive
+        new_table = pd.DataFrame(to_keep).nlargest(30, 'intensity')
+        new_table.reset_index(drop=True, inplace=True)
+        new_table['third'] = i
+        highest_30_by_third.append(new_table.to_dict())
+
+
     metric = {
         "name": "MS1_inventory",
         "type": "single",
@@ -79,6 +119,7 @@ if __name__ == "__main__":
             "TIC_bins": mz_bins,
             "TIC_metrics": tic_metrics,
             "Feature_metrics": feature_metrics,
+            "highest_30_by_quarter_RT": highest_30_by_third,
             "MS1_inventory": df_MS1.to_dict()
         }
     }
