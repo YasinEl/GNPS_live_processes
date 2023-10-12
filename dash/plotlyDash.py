@@ -144,8 +144,6 @@ def render_tab(tab_value):
                             dcc.Graph(id='vacant-scan-plot', style={'height': '400px', 'marginBottom': '10px'}),
                         ], style={'border': '1px solid grey', 'border-radius': '8px', 'padding': '10px',
                                   'marginBottom': '10px'}),
-                        #when looking at rt dimension in 10% bins. where are the missing MS2s
-
                     ], style={'border': '2px solid grey', 'border-radius': '12px', 'padding': '15px',
                               'marginBottom': '20px'}),
                 ])
@@ -193,13 +191,52 @@ def render_tab(tab_value):
                             dcc.Graph(id='int-changes-qc', style={'height': '400px', 'marginBottom': '10px'}),
                         ], style={'border': '1px solid grey', 'border-radius': '8px', 'padding': '10px',
                                   'marginBottom': '10px'}),
+                    ], style={'border': '2px solid grey', 'border-radius': '12px', 'padding': '15px',
+                              'marginBottom': '20px'}),
+                    html.Div([
+                        html.Div(
+                            "Retention time and intensity stability of standards",
+                            style={'textAlign': 'center', 'padding': '10px',
+                                   'backgroundColor': 'rgba(0, 128, 128, 0.1)',
+                                   'fontSize': '24px', 'fontWeight': 'bold',
+                                   'marginBottom': '20px'}),
+                        html.Div([
+                            dbc.Row([
+                                dbc.Col([
+                                    html.Label('Standard set', style={'marginBottom': '10px'}),
+                                    dcc.Dropdown(
+                                        id='set-dropdown',
+                                        style={'width': '90%'}
+                                    ),
+                                ], width=4, className='align-self-end'),
+
+                                dbc.Col([
+                                    html.Div([], style={'height': '38px'}),
+                                    dcc.Checklist(
+                                        id='relative-scale-checkbox',
+                                        options=[{'label': 'Relative Scale', 'value': 'relative'}],
+                                        value=['relative']
+                                    ),
+                                ], width=4, className='align-self-end'),
+                            ], style={'margin-top': '10px'}),
+                        ]),
                         html.Div([
                             html.Div(
-                                "Features lacking MS2 scans above 3rd percentile: MS2 scans which have been acquired instead of the missed MS2 scans.",
+                                "Median absolute retention time change from one QC injection to the next.",
                                 style={'textAlign': 'center', 'padding': '5px',
                                        'backgroundColor': 'rgba(128, 128, 128, 0.1)',
                                        'marginBottom': '20px'}),
-                            dcc.Graph(id='reasons_above_int_thr', style={'height': '400px', 'marginBottom': '10px'}),
+                            dcc.Graph(id='rt-changes-std',
+                                      style={'height': '400px', 'marginBottom': '10px'}),
+                        ], style={'border': '1px solid grey', 'border-radius': '8px', 'padding': '10px',
+                                  'marginBottom': '10px'}),
+                        html.Div([
+                            html.Div(
+                                "Median intensity change from one QC injection to the next.",
+                                style={'textAlign': 'center', 'padding': '5px',
+                                       'backgroundColor': 'rgba(128, 128, 128, 0.1)',
+                                       'marginBottom': '20px'}),
+                            dcc.Graph(id='int-changes-std', style={'height': '400px', 'marginBottom': '10px'}),
                         ], style={'border': '1px solid grey', 'border-radius': '8px', 'padding': '10px',
                                   'marginBottom': '10px'}),
                     ], style={'border': '2px solid grey', 'border-radius': '12px', 'padding': '15px',
@@ -214,8 +251,6 @@ def render_tab(tab_value):
 )
 def update_tab_content(active_tab):
     return render_tab(active_tab)
-
-
 
 @app.callback(
     [Output('mzml-checklist', 'options'),
@@ -314,6 +349,165 @@ def update_qc_dropdown_options(update_check, current_options):
         return qc_type_options, most_common_qc
 
 
+@app.callback(
+    Output('set-dropdown', 'options'),
+    Output('set-dropdown', 'value'),
+    Input('check_file_update', 'n_intervals'),
+    State('set-dropdown', 'options')
+)
+def update_set_dropdown_options(update_check, current_options):
+
+    ctx = dash.callback_context
+
+    if not ctx.triggered_id and current_options is not None:
+        raise dash.exceptions.PreventUpdate
+
+    if (ctx.triggered_id and 'check_file_update' in ctx.triggered_id) or current_options is None:
+
+        engine = create_engine(f'sqlite:///{db_path}')
+        query = "SELECT DISTINCT collection FROM targetedSummary"
+        df_qcs = pd.read_sql(query, engine)
+        unique_qc_types = df_qcs['collection'].unique()
+        qc_type_options = [{'label': val, 'value': val} for val in unique_qc_types]
+        engine.dispose()
+
+        return qc_type_options, unique_qc_types[0]
+
+
+#std rt
+@app.callback(
+    Output('rt-changes-std', 'figure'),
+    Input('set-dropdown', 'value'),
+    Input('relative-scale-checkbox', 'value')
+)
+def rt_stability_std(qc_dropdown_value, scale_option):
+    if qc_dropdown_value is None:
+        raise dash.exceptions.PreventUpdate
+
+    engine = create_engine(f'sqlite:///{db_path}')
+    query = f"SELECT name, mzml_file, datetime_order, RT " \
+            f"FROM targetedSummary " \
+            f"WHERE collection = ?"
+
+    df_feature_count = pd.read_sql(query, engine, params=(qc_dropdown_value,))
+    engine.dispose()
+
+    if 'relative' in scale_option:
+        median_dict = {}
+        for name in df_feature_count['name'].unique():
+            name_group = df_feature_count[df_feature_count['name'] == name]
+            median_dict[name] = {
+                'rt': name_group['RT'].median()
+            }
+
+        for name, medians in median_dict.items():
+            median_rt = medians['rt']
+            name_idx = df_feature_count['name'] == name
+            df_feature_count.loc[name_idx, 'RT'] = df_feature_count.loc[name_idx, 'RT'] - median_rt
+
+        yaxis_title_rt = "RT deviation from median [s]"
+    else:
+        yaxis_title_rt = "RT"
+
+    # # Rename columns for better readability
+    # df_feature_count.rename(columns={
+    #     'rt_bin_0': 'RT bin 1',
+    #     'rt_bin_1': 'RT bin 2',
+    #     'rt_bin_2': 'RT bin 3'
+    # }, inplace=True)
+    #
+    highest_value = df_feature_count[['RT']].max().max()
+    lowest_value = df_feature_count[['RT']].min().min()
+
+    # Create the figure
+    fig = px.line(df_feature_count, x='datetime_order', y='RT', color='name', hover_data=['mzml_file'])
+
+
+    # Update layout
+    fig.update_layout(
+        xaxis_title="Injection order",
+        yaxis_title=yaxis_title_rt,
+        legend_title_text='',
+        margin=dict(t=10),
+        legend=dict(
+            x=0.5,
+            y=1.1,
+            xanchor='center',
+            orientation='h'
+        ),
+        yaxis=dict(range=[lowest_value - 6, highest_value + 6])
+    )
+
+    return fig
+
+
+#std rt
+@app.callback(
+    Output('int-changes-std', 'figure'),
+    Input('set-dropdown', 'value'),
+    Input('relative-scale-checkbox', 'value')
+)
+def rt_stability_std(qc_dropdown_value, scale_option):
+    if qc_dropdown_value is None:
+        raise dash.exceptions.PreventUpdate
+
+    engine = create_engine(f'sqlite:///{db_path}')
+    query = f"SELECT name, mzml_file, datetime_order, Height " \
+            f"FROM targetedSummary " \
+            f"WHERE collection = ?"
+
+    df_feature_count = pd.read_sql(query, engine, params=(qc_dropdown_value,))
+    engine.dispose()
+
+    df_feature_count['Height'] = pd.to_numeric(df_feature_count['Height'], errors='coerce')
+
+    if 'relative' in scale_option:
+        median_dict = {}
+        for name in df_feature_count['name'].unique():
+            name_group = df_feature_count[df_feature_count['name'] == name]
+            median_dict[name] = {
+                'Height': name_group['Height'].median()
+            }
+
+        for name, medians in median_dict.items():
+            median_int = medians['Height']
+            name_idx = df_feature_count['name'] == name
+            df_feature_count.loc[name_idx, 'Height'] = ((df_feature_count.loc[name_idx, 'Height'] / median_int) -1)*100
+
+        yaxis_title_rt = "intensity deviation from median [%]"
+    else:
+        yaxis_title_rt = "intensity"
+
+    # # Rename columns for better readability
+    # df_feature_count.rename(columns={
+    #     'rt_bin_0': 'RT bin 1',
+    #     'rt_bin_1': 'RT bin 2',
+    #     'rt_bin_2': 'RT bin 3'
+    # }, inplace=True)
+    #
+    highest_value = df_feature_count[['Height']].max().max()
+    lowest_value = df_feature_count[['Height']].min().min()
+
+    # Create the figure
+    fig = px.line(df_feature_count, x='datetime_order', y='Height', color='name', hover_data=['mzml_file'])
+
+
+    # Update layout
+    fig.update_layout(
+        xaxis_title="Injection order",
+        yaxis_title=yaxis_title_rt,
+        legend_title_text='',
+        margin=dict(t=10),
+        legend=dict(
+            x=0.5,
+            y=1.1,
+            xanchor='center',
+            orientation='h'
+        ),
+        yaxis=dict(range=[lowest_value - 10, highest_value + 10])
+    )
+
+    return fig
 
 @app.callback(
     Output('int-changes-qc', 'figure'),

@@ -27,7 +27,8 @@ def create_filtered_table(json_file, name=None, type_=None, collection=None, inc
                 row = {
                     'mzml_file': mzml_name,
                     'date_time': time_of_upload,
-                    'name': metric_name
+                    'name': metric_name,
+                    'collection': metric_collection
                 }
 
                 reports = metric.get('reports', {})
@@ -188,9 +189,11 @@ if __name__ == '__main__':
     df_untargeted_injection_stability = get_QC_pool_stabilities(df_untargeted_cornerFeatures, df_metadata)
    
     df_targeted = create_filtered_table(args.json_path, type_ = 'standards')
+    date_time_mapping = df_targeted.groupby('mzml_file')['date_time'].first()
+    df_targeted['date_time'] = df_targeted['mzml_file'].map(date_time_mapping)
+    df_targeted.sort_values(by='date_time', inplace=True)
+    df_targeted['datetime_order'] = df_targeted['date_time'].rank(method='min').astype(int)
     df_targeted.drop(['date_time'], axis=1, inplace=True)
-
-
     
     engine = create_engine('sqlite:///aggregated_summary.db')
 
