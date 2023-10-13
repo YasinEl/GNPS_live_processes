@@ -65,7 +65,25 @@ def create_filtered_table(json_file, name=None, type_=None, collection=None, inc
 
     return df
 
+def normalize_to_first_mzml(group):
+    group = group.sort_values('datetime_order', ascending=False)
 
+    for variable in ['int_bin_0',  'int_bin_1',  'int_bin_2']:
+
+        group[variable + '_temp'] = float('nan')
+        group[variable + '_temp'].iloc[0] = 1
+
+        for i in range(1, len(group)):
+            group[variable + '_temp'].iloc[i] = group[variable + '_temp'].iloc[i-1] + ((-1 * group[variable + '_temp'].iloc[i-1] * group[variable].iloc[i-1]) / 100)
+
+        group[variable] = group[variable + '_temp'] / group.loc[group['datetime_order'].idxmin()][variable + '_temp']
+
+        group[variable] = (group[variable] -1) * 100
+
+    group = group[group.columns.drop(list(group.filter(regex='_temp')))]
+    
+    return group.sort_values('datetime_order')
+    
 def get_QC_pool_stabilities(df, df_meta, max_rt_diff=15):
 
     date_time_mapping = df.groupby('mzml_file')['date_time'].first()
@@ -162,6 +180,7 @@ def get_QC_pool_stabilities(df, df_meta, max_rt_diff=15):
 
     final_df.rename(columns={'order': 'datetime_order', 'mzml': 'mzml_file'}, inplace=True)
 
+    final_df = final_df.groupby('qctype').apply(normalize_to_first_mzml).reset_index(drop=True)
 
     return final_df
 
@@ -197,9 +216,9 @@ if __name__ == '__main__':
     
     engine = create_engine('sqlite:///aggregated_summary.db')
 
-    df_untargeted_perMZML.to_sql('untargetedSummary', engine, if_exists='replace')
-    df_targeted.to_sql('targetedSummary', engine, if_exists='replace')
-    df_untargeted_injection_stability.to_sql('untargetedStability', engine, if_exists='replace')
+    df_untargeted_perMZML.to_sql('untargetedSummary', engine, if_exists='replace', index=False)
+    df_targeted.to_sql('targetedSummary', engine, if_exists='replace', index=False)
+    df_untargeted_injection_stability.to_sql('untargetedStability', engine, if_exists='replace', index=False)
 
 
 

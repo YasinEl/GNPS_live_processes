@@ -18,5 +18,5 @@ dependencies:
     - pyopenms==3.0.0
     - plotly
     - rdkit
-    #- formula_validation==1.0.1
+    - formula_validation==1.0.1
 

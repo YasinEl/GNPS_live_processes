@@ -1,7 +1,7 @@
 import pandas as pd
 import json
 import argparse
-#from formula_validation.Formula import Formula 
+from formula_validation.Formula import Formula 
 from io import StringIO
 
 def get_openms_featurefindermetaboident_formulas(row):
@@ -39,8 +39,8 @@ if __name__ == '__main__':
 
     column_rename_map = {
     'name': 'CompoundName',
-    #'formula': 'SumFormula',
-    'openms_formula': 'SumFormula',
+    'formula': 'SumFormula',
+    #'openms_formula': 'SumFormula',
     'retention time [seconds]': 'RetentionTime',
     'charge': 'Charge',
     'mz': 'Mass'
@@ -50,8 +50,8 @@ if __name__ == '__main__':
         
         df_STD_openms = df_standards.copy()
 
-        #df_STD_openms['openms_formula'] = df_STD_openms.apply(get_openms_featurefindermetaboident_formulas, axis=1) 
-        df_STD_openms['openms_formula'] = df_STD_openms['formula']
+        df_STD_openms['openms_formula'] = df_STD_openms.apply(get_openms_featurefindermetaboident_formulas, axis=1) 
+        #df_STD_openms['openms_formula'] = df_STD_openms['formula']
         df_STD_openms['name'] = df_STD_openms['name'] + '_' + df_STD_openms['adduct']
         
         df_STD_openms.rename(columns=column_rename_map, inplace=True)

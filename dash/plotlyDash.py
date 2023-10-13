@@ -1,6 +1,6 @@
 import os
 import dash
-from dash import dcc, html, Input, Output, State
+from dash import dcc, html, Input, Output, State, dash_table
 import dash_bootstrap_components as dbc
 import numpy as np
 import plotly.graph_objects as go
@@ -58,7 +58,7 @@ app.layout = html.Div([
             dbc.Tabs([
                 dbc.Tab(label='QC-stability', tab_id='qc-stability-tab'),
                 dbc.Tab(label='MS2 coverage', tab_id='ms2-coverage-tab'),
-                dbc.Tab(label='Targeted', tab_id='targeted-tab'),
+                dbc.Tab(label='Event-table', tab_id='event-tab'),
             ], id='tabs', active_tab='ms2-coverage-tab'),
             html.Div(id='tabs-content'),
         ], width=10),
@@ -150,16 +150,18 @@ def render_tab(tab_value):
             ], width=12)
         ], style={'marginTop': '10px'})
 
-    elif tab_value == 'targeted-tab':
+    elif tab_value == 'event-tab':
         return html.Div([
-
+        dash_table.DataTable(
+            id='event-table'
+        )
         ], style={'marginTop': '10px'})
     elif tab_value == 'qc-stability-tab':
         return html.Div([
             dbc.Col([
                 dbc.Row([
                     html.Div([
-                        html.Div("Stability of signals in QC samples in 1., 2. and 3. third of the total retention time range", style={'textAlign': 'center', 'padding': '10px',
+                        html.Div("Stability of peaks in QC samples in 1., 2. and 3. third of the total retention time range", style={'textAlign': 'center', 'padding': '10px',
                                                                               'backgroundColor': 'rgba(0, 128, 128, 0.1)',
                                                                               'fontSize': '24px', 'fontWeight': 'bold',
                                                                               'marginBottom': '20px'}),
@@ -168,13 +170,13 @@ def render_tab(tab_value):
                                 html.Label('QC type', style={'marginBottom': '5px'}),
                                 dcc.Dropdown(
                                     id='qc-dropdown',
-                                    style={'width': '90%', 'marginBottom': '10px'}
+                                    style={'width': '60%', 'marginBottom': '10px'}
                                 ),
                             ], width=4, className='align-self-end')
                         ], style={'margin-top': '10px'}),
                         html.Div([
                             html.Div(
-                                "Median absolute retention time change from one QC injection to the next.",
+                                "Median absolute retention time trends relative to first injection.",
                                 style={'textAlign': 'center', 'padding': '5px',
                                        'backgroundColor': 'rgba(128, 128, 128, 0.1)',
                                        'marginBottom': '20px'}),
@@ -184,7 +186,7 @@ def render_tab(tab_value):
                                   'marginBottom': '10px'}),
                         html.Div([
                             html.Div(
-                                "Median intensity change from one QC injection to the next.",
+                                "Median intensity trends relative to first injection.",
                                 style={'textAlign': 'center', 'padding': '5px',
                                        'backgroundColor': 'rgba(128, 128, 128, 0.1)',
                                        'marginBottom': '20px'}),
@@ -206,9 +208,9 @@ def render_tab(tab_value):
                                     html.Label('Standard set', style={'marginBottom': '10px'}),
                                     dcc.Dropdown(
                                         id='set-dropdown',
-                                        style={'width': '90%'}
+                                        style={'width': '60%', 'marginBottom': '10px'}
                                     ),
-                                ], width=4, className='align-self-end'),
+                                ], width=2, className='align-self-end'),
 
                                 dbc.Col([
                                     html.Div([], style={'height': '38px'}),
@@ -217,12 +219,12 @@ def render_tab(tab_value):
                                         options=[{'label': 'Relative Scale', 'value': 'relative'}],
                                         value=['relative']
                                     ),
-                                ], width=4, className='align-self-end'),
+                                ], width=2, className='align-self-end'),
                             ], style={'margin-top': '10px'}),
                         ]),
                         html.Div([
                             html.Div(
-                                "Median absolute retention time change from one QC injection to the next.",
+                                "Standards: Retention time trends.",
                                 style={'textAlign': 'center', 'padding': '5px',
                                        'backgroundColor': 'rgba(128, 128, 128, 0.1)',
                                        'marginBottom': '20px'}),
@@ -232,7 +234,7 @@ def render_tab(tab_value):
                                   'marginBottom': '10px'}),
                         html.Div([
                             html.Div(
-                                "Median intensity change from one QC injection to the next.",
+                                "Standards: Intensity trends.",
                                 style={'textAlign': 'center', 'padding': '5px',
                                        'backgroundColor': 'rgba(128, 128, 128, 0.1)',
                                        'marginBottom': '20px'}),
@@ -324,12 +326,36 @@ def update_checklist_options(update_check, select_clicks, unselect_clicks, text_
 
 
 @app.callback(
+    Output('event-table', 'value'),
+    Input('check_file_update', 'n_intervals')
+)
+def get_event_table(update_check):
+
+    ctx = dash.callback_context
+
+    if not ctx.triggered_id:
+        raise dash.exceptions.PreventUpdate
+
+    engine = create_engine(f'sqlite:///{db_path}')
+    query = f"SELECT datetime_order, mzml_file, QC_type, RT " \
+            f"FROM untargetedSummary "
+    df_qcs = pd.read_sql(query, engine)
+    unique_qc_types = df_qcs['qctype'].unique()
+    most_common_qc = df_qcs['qctype'].mode()[0]
+    qc_type_options = [{'label': val, 'value': val} for val in unique_qc_types]
+    engine.dispose()
+
+
+
+
+@app.callback(
     Output('qc-dropdown', 'options'),
     Output('qc-dropdown', 'value'),
     Input('check_file_update', 'n_intervals'),
-    State('qc-dropdown', 'options')
+    State('qc-dropdown', 'options'),
+    State('qc-dropdown', 'value')
 )
-def update_qc_dropdown_options(update_check, current_options):
+def update_qc_dropdown_options(update_check, current_options, current_value):
 
     ctx = dash.callback_context
 
@@ -346,6 +372,9 @@ def update_qc_dropdown_options(update_check, current_options):
         qc_type_options = [{'label': val, 'value': val} for val in unique_qc_types]
         engine.dispose()
 
+        if current_options is not None:
+            return qc_type_options, current_value
+
         return qc_type_options, most_common_qc
 
 
@@ -353,9 +382,10 @@ def update_qc_dropdown_options(update_check, current_options):
     Output('set-dropdown', 'options'),
     Output('set-dropdown', 'value'),
     Input('check_file_update', 'n_intervals'),
-    State('set-dropdown', 'options')
+    State('set-dropdown', 'options'),
+    State('set-dropdown', 'value')
 )
-def update_set_dropdown_options(update_check, current_options):
+def update_set_dropdown_options(update_check, current_options, current_value):
 
     ctx = dash.callback_context
 
@@ -370,6 +400,9 @@ def update_set_dropdown_options(update_check, current_options):
         unique_qc_types = df_qcs['collection'].unique()
         qc_type_options = [{'label': val, 'value': val} for val in unique_qc_types]
         engine.dispose()
+
+        if current_options is not None:
+            return qc_type_options, current_value
 
         return qc_type_options, unique_qc_types[0]
 
@@ -391,6 +424,9 @@ def rt_stability_std(qc_dropdown_value, scale_option):
 
     df_feature_count = pd.read_sql(query, engine, params=(qc_dropdown_value,))
     engine.dispose()
+
+    if len(df_feature_count) == 0:
+        raise dash.exceptions.PreventUpdate
 
     if 'relative' in scale_option:
         median_dict = {}
@@ -459,6 +495,9 @@ def rt_stability_std(qc_dropdown_value, scale_option):
     df_feature_count = pd.read_sql(query, engine, params=(qc_dropdown_value,))
     engine.dispose()
 
+    if len(df_feature_count) == 0:
+        raise dash.exceptions.PreventUpdate
+
     df_feature_count['Height'] = pd.to_numeric(df_feature_count['Height'], errors='coerce')
 
     if 'relative' in scale_option:
@@ -504,7 +543,7 @@ def rt_stability_std(qc_dropdown_value, scale_option):
             xanchor='center',
             orientation='h'
         ),
-        yaxis=dict(range=[lowest_value - 10, highest_value + 10])
+        yaxis=dict(range=[lowest_value - 30, highest_value + 30])
     )
 
     return fig
@@ -533,11 +572,12 @@ def intensity_stability_untargeted(qc_dropdown_value):
         'int_bin_2': 'RT bin 3'
     }, inplace=True)
 
+
     highest_value = df_feature_count[['RT bin 1', 'RT bin 2', 'RT bin 3']].max().max()
     lowest_value = df_feature_count[['RT bin 1', 'RT bin 2', 'RT bin 3']].min().min()
 
     # Create the figure
-    fig = px.line(df_feature_count, x='datetime_order', y=['RT bin 1', 'RT bin 2', 'RT bin 3'])
+    fig = px.line(df_feature_count, x='datetime_order', y=['RT bin 1', 'RT bin 2', 'RT bin 3'], hover_data=['mzml_file'])
 
 
     # Update layout
@@ -552,7 +592,7 @@ def intensity_stability_untargeted(qc_dropdown_value):
             xanchor='center',
             orientation='h'
         ),
-        yaxis=dict(range=[lowest_value - 20, highest_value + 20])
+        yaxis=dict(range=[-100, highest_value + 50])
     )
 
     return fig
@@ -582,11 +622,12 @@ def rt_stability_untargeted(qc_dropdown_value):
         'rt_bin_2': 'RT bin 3'
     }, inplace=True)
 
+
     highest_value = df_feature_count[['RT bin 1', 'RT bin 2', 'RT bin 3']].max().max()
     lowest_value = df_feature_count[['RT bin 1', 'RT bin 2', 'RT bin 3']].min().min()
 
     # Create the figure
-    fig = px.line(df_feature_count, x='datetime_order', y=['RT bin 1', 'RT bin 2', 'RT bin 3'])
+    fig = px.line(df_feature_count, x='datetime_order', y=['RT bin 1', 'RT bin 2', 'RT bin 3'], hover_data=['mzml_file'])
 
 
     # Update layout
@@ -831,6 +872,8 @@ def features_without_ms2_by_int(mzml_checklist):
     df_feature_count = pd.read_sql(query, engine, params=tuple(mzml_checklist))
     engine.dispose()
 
+    if len(df_feature_count) == 0:
+        raise dash.exceptions.PreventUpdate
 
     df_feature_count['datetime_order_u'] = range(1, len(df_feature_count) + 1)
 
