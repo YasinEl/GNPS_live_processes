@@ -18,9 +18,9 @@ def create_regex(df):
 
         for _, row in group.iterrows():
             if row['parameters'] == '#STD_set_pattern' and row['pattern'] != '*':
-                patterns_to_include.append(row['pattern'])
+                patterns_to_include.append(row['pattern'].lower())
             elif row['parameters'] == '#STD_set_skip':
-                patterns_to_exclude.append(row['pattern'])
+                patterns_to_exclude.append(row['pattern'].lower())
 
         # Construct the regex pattern
         if patterns_to_include:
@@ -48,6 +48,11 @@ def prepare_parameter_file(file_path, mzml_path):
     df_general_params = pd.read_excel(file_path, sheet_name='Other parameters', usecols=range(2), engine='openpyxl')
     df_general_params.set_index('parameter', inplace=True)
 
+    if int(df_general_params.loc['Maximum FWHM', 'value']) != 0 and int(df_general_params.loc['Minimum FWHM', 'value']) != 0:
+        peak_width_filter = 'fixed'
+    else:
+        peak_width_filter = 'auto'
+
     df_samplename_set = df_params[df_params['parameters'].isin(['#STD_set_pattern', '#STD_set_skip'])]
     df_regex = create_regex(df_samplename_set)
 
@@ -57,7 +62,7 @@ def prepare_parameter_file(file_path, mzml_path):
     STD_sets_to_extract = []
     for _, row in df_regex.iterrows():
         pattern = row['regex']
-        if re.search(pattern, name_of_mzml):
+        if re.search(pattern, name_of_mzml.lower()):
             STD_sets_to_extract.append(row['set'])
 
     df_STD = df_STD[df_STD['set'].isin(STD_sets_to_extract)]
@@ -67,7 +72,9 @@ def prepare_parameter_file(file_path, mzml_path):
                    'df_regex': df_regex,
                    'MS1 precision': int(df_general_params.loc['MS1 precision', 'value']),
                    'MS2 precision': int(df_general_params.loc['MS2 precision', 'value']),
+                   'Minimum FWHM': int(df_general_params.loc['Minimum FWHM', 'value']),
                    'Maximum FWHM': int(df_general_params.loc['Maximum FWHM', 'value']),
+                   'peak_width_filter': str(peak_width_filter),
                    'Lower mz of mass range': int(df_general_params.loc['Lower mz of mass range', 'value']),
                    'Upper mz of mass range': int(df_general_params.loc['Upper mz of mass range', 'value'])}
        

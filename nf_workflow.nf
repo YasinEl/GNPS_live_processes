@@ -71,13 +71,16 @@ process ApplyFeatureFinderMetabo {
     script:
     """
     ms1ppm=\$(echo "${general_parameters}" | cut -d',' -f1)
-    max_fwhm=\$(echo "${general_parameters}" | cut -d',' -f3)
+    min_fwhm=\$(echo "${general_parameters}" | cut -d',' -f3)
+    max_fwhm=\$(echo "${general_parameters}" | cut -d',' -f4)
+    pw_filter=\$(echo "${general_parameters}" | cut -d',' -f5)
 
-    FeatureFinderMetabo -in ${mzml_file} -out features.featureXML -algorithm:epd:width_filtering auto -threads 1 \
-    -algorithm:ffm:report_convex_hulls true  -algorithm:ffm:mz_scoring_by_elements true -algorithm:ffm:elements CHNOPSClNaKFBrLiMgSiCaCrFeCuSe \
-    -algorithm:common:chrom_fwhm 3 -algorithm:ffm:use_smoothed_intensities false -algorithm:mtd:mass_error_ppm \$ms1ppm \
-    -algorithm:common:noise_threshold_int 10000 -algorithm:ffm:remove_single_traces true -algorithm:mtd:quant_method max_height \
-    -algorithm:mtd:min_trace_length 3 -algorithm:ffm:charge_upper_bound 20 -algorithm:ffm:local_rt_range 1 -algorithm:ffm:local_mz_range 15
+    FeatureFinderMetabo -in ${mzml_file} -out features.featureXML -algorithm:epd:width_filtering \$pw_filter -algorithm:epd:min_fwhm \$min_fwhm \
+    -algorithm:epd:max_fwhm \$max_fwhm -threads 1 -algorithm:ffm:report_convex_hulls true  -algorithm:ffm:mz_scoring_by_elements true \
+    -algorithm:ffm:elements CHNOPSClNaKFBrLiMgSiCaCrFeCuSe -algorithm:common:chrom_fwhm 3 -algorithm:ffm:use_smoothed_intensities false \
+    -algorithm:mtd:mass_error_ppm \$ms1ppm -algorithm:common:noise_threshold_int 10000 -algorithm:ffm:remove_single_traces true \
+    -algorithm:mtd:quant_method max_height -algorithm:mtd:min_trace_length 3 -algorithm:ffm:charge_upper_bound 20 -algorithm:ffm:local_rt_range 1 \
+    -algorithm:ffm:local_mz_range 15
     """
 }
 
@@ -298,15 +301,30 @@ process getParametersFromJson {
     import pandas as pd
     from io import StringIO
 
+    jsonObject = {}
     with open('$ParamJsonPath', 'r') as f:
-        jsonObject = json.load(f)
-        jsonObject = {key: pd.read_json(StringIO(value)) if isinstance(value, str) else value for key, value in jsonObject.items() if value}
+        data = json.load(f)
+        for key, value in data.items():
+            if key == 'peak_width_filter':
+                jsonObject[key] = value
+            elif isinstance(value, str):
+                try:
+                    jsonObject[key] = pd.read_json(StringIO(value))
+                except Exception as e:
+                    print(f"Error while converting to DataFrame: {e}")
+            else:
+                jsonObject[key] = value
+              
 
+    #print(jsonObject.keys())
     ms1_precision = jsonObject['MS1 precision']
     ms2_precision = jsonObject['MS2 precision']
     max_fwhm = jsonObject['Maximum FWHM']
+    min_fwhm = jsonObject['Minimum FWHM']
+    pw_filter = jsonObject['peak_width_filter']
 
-    print(ms1_precision, ms2_precision, max_fwhm, sep=',', end='')
+    print(ms1_precision, ms2_precision, min_fwhm, max_fwhm, pw_filter, sep=',', end='')
+
     """
 }
 

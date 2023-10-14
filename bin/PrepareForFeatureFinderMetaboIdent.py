@@ -29,7 +29,19 @@ if __name__ == '__main__':
 
     with open(args.parameter_json, 'r') as f:
         json_data = json.load(f)
-        parameter_dict = {key: pd.read_json(StringIO(value)) if isinstance(value, str) else value for key, value in json_data.items() if value}
+        #parameter_dict = {key: pd.read_json(StringIO(value)) if isinstance(value, str) else value for key, value in json_data.items() if value}
+        parameter_dict = {}
+        for key, value in json_data.items():
+            if value:
+                if key == 'peak_width_filter':
+                    parameter_dict[key] = value
+                elif isinstance(value, str):
+                    try:
+                        parameter_dict[key] = pd.read_json(StringIO(value))
+                    except Exception as e:
+                        print(f"Error while converting to DataFrame: {e}")
+                else:
+                    parameter_dict[key] = value
 
 
 
