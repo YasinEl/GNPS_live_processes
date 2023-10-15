@@ -14,7 +14,7 @@ TOOL_FOLDER = "$baseDir/bin"
 //take care of no MS2 spectra
 //corrupted raw/mzml files
 //check mass accuracy
-//check in pool for features appearing in the run.
+//check in blank for carry over and system readyness
 
 process CreateMS2Inventory {
     conda "$TOOL_FOLDER/requirements.yml"
@@ -238,6 +238,7 @@ process CreateMS1Inventory {
 
     input:
     path mzml_file
+    val general_parameters
     val toolFolder
 
     output:
@@ -245,7 +246,28 @@ process CreateMS1Inventory {
 
     script:
     """
-    python $toolFolder/createMS1table.py --file_path ${mzml_file} 
+    lowerMZ=\$(echo "${general_parameters}" | cut -d',' -f6)
+    upperMZ=\$(echo "${general_parameters}" | cut -d',' -f7)
+    python $toolFolder/createMS1table.py --file_path ${mzml_file} --massRangeMin \$lowerMZ --massRangeMax \$upperMZ
+    """
+}
+
+process CheckReEquilibration {
+    conda "$TOOL_FOLDER/requirements.yml"
+
+    input:
+    path mzml_file
+    val general_parameters
+    val toolFolder
+
+    output:
+    path("reequilibration_check.csv"), emit: csv
+
+    script:
+    """
+    lowerMZ=\$(echo "${general_parameters}" | cut -d',' -f6)
+    upperMZ=\$(echo "${general_parameters}" | cut -d',' -f7)
+    python $toolFolder/checkMS1Reequilibration.py --file_path ${mzml_file} --massRangeMin \$lowerMZ --massRangeMax \$upperMZ
     """
 }
 
@@ -265,6 +287,23 @@ process Add_MS1_info_to_output_collection {
     script:
     """
     python $toolFolder/add_MS1_info_to_output_json.py --output_json_path ${output_json} --ms1_inv_csv ${MS1_table} --feature_csv ${feature_table}
+    """
+}
+
+process Add_ReEquilibration_info_to_output_collection {
+    conda "$TOOL_FOLDER/requirements.yml"
+    
+    input:
+    path output_json
+    path ReE_table
+    val toolFolder
+
+    output:
+    path("mzml_summary.json"), emit: json
+
+    script:
+    """
+    python $toolFolder/add_ReEqui_info_to_output_json.py --output_json_path ${output_json} --reEqui_csv_path ${ReE_table} 
     """
 }
 
@@ -322,8 +361,10 @@ process getParametersFromJson {
     max_fwhm = jsonObject['Maximum FWHM']
     min_fwhm = jsonObject['Minimum FWHM']
     pw_filter = jsonObject['peak_width_filter']
+    lower_mass_range_limit = jsonObject['Lower mz of mass range']
+    upper_mass_range_limit = jsonObject['Upper mz of mass range']
 
-    print(ms1_precision, ms2_precision, min_fwhm, max_fwhm, pw_filter, sep=',', end='')
+    print(ms1_precision, ms2_precision, min_fwhm, max_fwhm, pw_filter, lower_mass_range_limit, upper_mass_range_limit, sep=',', end='')
 
     """
 }
@@ -370,8 +411,10 @@ workflow {
     feature_list_csv = featureXML2csv(feature_list)
     
     //collect untargeted MS1, MS2, and feature information
-    MS1_inventory = CreateMS1Inventory(mzml_files_ch, TOOL_FOLDER)
-    output_json_ms1 = Add_MS1_info_to_output_collection(output_json_targeted, MS1_inventory, feature_list_csv, TOOL_FOLDER)
+    MS1_inventory = CreateMS1Inventory(mzml_files_ch, paramList, TOOL_FOLDER)
+    ReEquilibration_info = CheckReEquilibration(mzml_files_ch, paramList, TOOL_FOLDER)
+    output_json_ReEquiInfo = Add_ReEquilibration_info_to_output_collection(output_json_targeted, ReEquilibration_info, TOOL_FOLDER)
+    output_json_ms1 = Add_MS1_info_to_output_collection(output_json_ReEquiInfo, MS1_inventory, feature_list_csv, TOOL_FOLDER)
 
     MS2_inventory = CreateMS2Inventory(mzml_files_ch, feature_list, paramList, TOOL_FOLDER)
     output_json_ms2 = Add_MS2_info_to_output_collection(output_json_ms1, MS2_inventory, TOOL_FOLDER)

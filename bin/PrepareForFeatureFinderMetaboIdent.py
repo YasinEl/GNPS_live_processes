@@ -44,9 +44,6 @@ if __name__ == '__main__':
                     parameter_dict[key] = value
 
 
-
-
-
     df_standards = parameter_dict['df_standards']
 
     column_rename_map = {

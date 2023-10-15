@@ -89,14 +89,18 @@ def calculate_bins(mz_limits, total_windows=3, min_bin_size=50, division=5, equa
 
 
 
-def calculate_tic(file_path):
+def calculate_tic(file_path, mzRange_min=0, mzRange_max=0):
     exp = oms.MSExperiment()
     oms.MzMLFile().load(file_path, exp)
     
     rt_values = []
     tic_values = []
     
-    mz_limits = get_MS1_MZ_range(file_path)
+    if mzRange_min>0 and mzRange_max>0:
+        mz_limits = [mzRange_min,mzRange_max]
+    else:
+        mz_limits = get_MS1_MZ_range(file_path)
+
     bin_limits = calculate_bins(mz_limits, total_windows=3, min_bin_size=50, division=3, equal_bins=True)
     tic_values_bins = [[] for _ in range(len(bin_limits))]
 
@@ -130,7 +134,9 @@ def calculate_tic(file_path):
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description="create inventory table for MS2 scans.")
     parser.add_argument('--file_path', type=str, help="Path to the mzML file.")
+    parser.add_argument('--massRangeMin', type=float, help="Minimum limit of mz range")
+    parser.add_argument('--massRangeMax', type=float, help="maximum limit of mz range")
     args = parser.parse_args()
     file_path = args.file_path
-    df = calculate_tic(file_path)
+    df = calculate_tic(file_path, args.massRangeMin, args.massRangeMax)
     df.to_csv('MS1_inventory_table.csv', index=False)

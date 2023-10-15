@@ -4,7 +4,7 @@ import numpy as np
 from lxml import etree
 import argparse
 
-def analyze_mzml(file_path, nr_of_bins = 10):
+def get_table_comparing_start_and_end_of_injection(file_path, massRangeMin, massRangeMax, nr_of_bins = 10):
     # Initialize MzMLFile and MSExperiment objects
     mzml = MzMLFile()
     exp = MSExperiment()
@@ -27,8 +27,13 @@ def analyze_mzml(file_path, nr_of_bins = 10):
     tree = etree.parse(file_path)
     root = tree.getroot()
     namespaces = {'ns': 'http://psi.hupo.org/ms/mzml'}
-    lower_limit = float(root.find(".//ns:cvParam[@accession='MS:1000501']", namespaces=namespaces).get('value'))
-    upper_limit = float(root.find(".//ns:cvParam[@accession='MS:1000500']", namespaces=namespaces).get('value'))
+
+    if massRangeMin > 0 and massRangeMin > 0:
+        lower_limit = massRangeMin
+        upper_limit = massRangeMax
+    else: 
+        lower_limit = float(root.find(".//ns:cvParam[@accession='MS:1000501']", namespaces=namespaces).get('value'))
+        upper_limit = float(root.find(".//ns:cvParam[@accession='MS:1000500']", namespaces=namespaces).get('value'))
 
     # Calculate bin width
     bin_width = (upper_limit - lower_limit) / nr_of_bins
@@ -61,7 +66,11 @@ def analyze_mzml(file_path, nr_of_bins = 10):
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description="create inventory table for MS2 scans.")
     parser.add_argument('--file_path', type=str, help="Path to the mzML file.")
+    parser.add_argument('--massRangeMin', type=float, help="Minimum limit of mz range")
+    parser.add_argument('--massRangeMax', type=float, help="maximum limit of mz range")
+    
     args = parser.parse_args()
     file_path = args.file_path
-    df = analyze_mzml(file_path, nr_of_bins =20)
-    print(df)
+    df = get_table_comparing_start_and_end_of_injection(file_path, massRangeMin=args.massRangeMin, massRangeMax=args.massRangeMax, nr_of_bins=20)
+    
+    df.to_csv('reequilibration_check.csv', index=False)
