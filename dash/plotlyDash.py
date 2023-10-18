@@ -58,6 +58,7 @@ app.layout = html.Div([
             dbc.Tabs([
                 dbc.Tab(label='QC-stability', tab_id='qc-stability-tab'),
                 dbc.Tab(label='MS2 coverage', tab_id='ms2-coverage-tab'),
+                dbc.Tab(label='Carry over and blanks', tab_id='carry-over-blank-tab'),
                 dbc.Tab(label='Event-table', tab_id='event-tab'),
             ], id='tabs', active_tab='ms2-coverage-tab'),
             html.Div(id='tabs-content'),
@@ -246,6 +247,32 @@ def render_tab(tab_value):
                 ])
             ], width=12)
         ], style={'marginTop': '10px'})
+    elif tab_value == 'carry-over-blank-tab':
+        return html.Div([
+            dbc.Col([
+                dbc.Row([
+                    html.Div([
+                        html.Div(
+                            "Re-equilibration performance of each injection",
+                            style={'textAlign': 'center', 'padding': '10px',
+                                   'backgroundColor': 'rgba(0, 128, 128, 0.1)',
+                                   'fontSize': '24px', 'fontWeight': 'bold',
+                                   'marginBottom': '20px'}),
+                        html.Div([
+                            html.Div(
+                                "Total ion current of first ('Injection scans') and last (Re-equlibration scans) 20 MS1 scans.",
+                                style={'textAlign': 'center', 'padding': '5px',
+                                       'backgroundColor': 'rgba(128, 128, 128, 0.1)',
+                                       'marginBottom': '20px'}),
+                            dcc.Graph(id='re-equilibration-plot',
+                                      style={'height': '400px', 'marginBottom': '10px'}),
+                        ], style={'border': '1px solid grey', 'border-radius': '8px', 'padding': '10px',
+                                  'marginBottom': '10px'}),
+                    ], style={'border': '2px solid grey', 'border-radius': '12px', 'padding': '15px',
+                              'marginBottom': '20px'}),
+                ])
+            ], width=12)
+        ], style={'marginTop': '10px'})
 
 @app.callback(
     Output('tabs-content', 'children'),
@@ -325,25 +352,31 @@ def update_checklist_options(update_check, select_clicks, unselect_clicks, text_
         return updated_options, updated_selection
 
 
-@app.callback(
-    Output('event-table', 'value'),
-    Input('check_file_update', 'n_intervals')
-)
-def get_event_table(update_check):
+# @app.callback(
+#     Output('event-table', 'value'),
+#     Input('check_file_update', 'n_intervals')
+# )
+# def get_event_table(update_check):
+#
+#     ctx = dash.callback_context
+#
+#     if not ctx.triggered_id:
+#         raise dash.exceptions.PreventUpdate
+#
+#     engine = create_engine(f'sqlite:///{db_path}')
+#     query = f"SELECT datetime_order, mzml_file, name, collection, RT, Height " \
+#             f"FROM targetedSummary "
+#     df_stds = pd.read_sql(query, engine)
+#
+#     query = f"SELECT mzml_file, qctype, rt_bin_0, rt_bin_1, rt_bin_2, int_bin_0, int_bin_1, int_bin_2 " \
+#             f"FROM untargetedSummary "
+#     df_qcs = pd.read_sql(query, engine)
+#
+#     engine.dispose()
+#
+#     merged_df = pd.merge(df_stds, df_qcs, on='mzml_file', how='outer')
 
-    ctx = dash.callback_context
 
-    if not ctx.triggered_id:
-        raise dash.exceptions.PreventUpdate
-
-    engine = create_engine(f'sqlite:///{db_path}')
-    query = f"SELECT datetime_order, mzml_file, QC_type, RT " \
-            f"FROM untargetedSummary "
-    df_qcs = pd.read_sql(query, engine)
-    unique_qc_types = df_qcs['qctype'].unique()
-    most_common_qc = df_qcs['qctype'].mode()[0]
-    qc_type_options = [{'label': val, 'value': val} for val in unique_qc_types]
-    engine.dispose()
 
 
 
@@ -407,6 +440,68 @@ def update_set_dropdown_options(update_check, current_options, current_value):
         return qc_type_options, unique_qc_types[0]
 
 
+
+
+
+
+
+@app.callback(
+    Output('re-equilibration-plot', 'figure'),
+    [Input('mzml-checklist', 'value')]
+)
+def re_equilibration_plot(mzml_checklist):
+    if mzml_checklist is None:
+        raise dash.exceptions.PreventUpdate
+
+    engine = create_engine(f'sqlite:///{db_path}')
+    mzml_placeholders = ', '.join(['?'] * len(mzml_checklist))
+    query = f"SELECT mzml_file, datetime_order, InjectionScans, ReequilibratedScans, BinID, LowerMz, UpperMz " \
+            f"FROM reEquilibration " \
+            f"WHERE mzml_file IN ({mzml_placeholders})"
+
+    df_reEqui = pd.read_sql(query, engine, params=tuple(mzml_checklist))
+    engine.dispose()
+
+    df_reEqui.sort_values(by='datetime_order', inplace=True)
+
+    # Assuming df_reEqui is your DataFrame
+    fig = go.Figure()
+
+    unique_bins = df_reEqui['BinID'].unique()
+
+    for bin_id in unique_bins:
+        sub_df = df_reEqui[df_reEqui['BinID'] == bin_id]
+
+        fig.add_trace(go.Bar(
+            x=sub_df['datetime_order'],
+            y=sub_df['InjectionScans'],
+            name='Sum of ions (first 20 scans)',
+            customdata=sub_df[['mzml_file']].values,
+            hovertemplate="<b>mzml_file:</b> %{customdata[0]}<br><b>datetime_order:</b> %{x}<br><b>Value:</b> %{y}"
+        ))
+
+        fig.add_trace(go.Bar(
+            x=sub_df['datetime_order'],
+            y=sub_df['ReequilibratedScans'],
+            name='Sum of ions (last 20 scans)',
+            customdata=sub_df[['mzml_file']].values,
+            hovertemplate="<b>mzml_file:</b> %{customdata[0]}<br><b>datetime_order:</b> %{x}<br><b>Value:</b> %{y}"
+        ))
+
+    fig.update_layout(
+        barmode='group',
+        title='',
+        xaxis_title='Injection order',
+        yaxis_title='intensity',
+        yaxis=dict(
+            exponentformat='E'
+        ),
+        hovermode='closest'
+    )
+
+    return fig
+
+
 #std rt
 @app.callback(
     Output('rt-changes-std', 'figure'),
@@ -427,6 +522,8 @@ def rt_stability_std(qc_dropdown_value, scale_option):
 
     if len(df_feature_count) == 0:
         raise dash.exceptions.PreventUpdate
+
+    df_feature_count['datetime_order'] = df_feature_count['datetime_order'].rank(method='dense').astype(int)
 
     if 'relative' in scale_option:
         median_dict = {}
@@ -498,6 +595,8 @@ def rt_stability_std(qc_dropdown_value, scale_option):
     if len(df_feature_count) == 0:
         raise dash.exceptions.PreventUpdate
 
+
+    df_feature_count['datetime_order'] = df_feature_count['datetime_order'].rank(method='dense').astype(int)
     df_feature_count['Height'] = pd.to_numeric(df_feature_count['Height'], errors='coerce')
 
     if 'relative' in scale_option:
