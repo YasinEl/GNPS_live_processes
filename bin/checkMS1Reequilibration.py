@@ -71,6 +71,6 @@ if __name__ == '__main__':
     
     args = parser.parse_args()
     file_path = args.file_path
-    df = get_table_comparing_start_and_end_of_injection(file_path, massRangeMin=args.massRangeMin, massRangeMax=args.massRangeMax, nr_of_bins=20)
+    df = get_table_comparing_start_and_end_of_injection(file_path, massRangeMin=args.massRangeMin, massRangeMax=args.massRangeMax, nr_of_bins=1)
     
     df.to_csv('reequilibration_check.csv', index=False)

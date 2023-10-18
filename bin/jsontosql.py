@@ -205,20 +205,38 @@ if __name__ == '__main__':
     df_metadata = create_filtered_table(args.json_path, collection='Sample_metadata')
     df_metadata = df_metadata[df_metadata['QC_type'] != "-"]
 
-    df_untargeted_injection_stability = get_QC_pool_stabilities(df_untargeted_cornerFeatures, df_metadata)
-   
-    df_targeted = create_filtered_table(args.json_path, type_ = 'standards')
-    date_time_mapping = df_targeted.groupby('mzml_file')['date_time'].first()
-    df_targeted['date_time'] = df_targeted['mzml_file'].map(date_time_mapping)
-    df_targeted.sort_values(by='date_time', inplace=True)
-    df_targeted['datetime_order'] = df_targeted['date_time'].rank(method='min').astype(int)
-    df_targeted.drop(['date_time'], axis=1, inplace=True)
+    if len(df_metadata) > 0:
+        df_untargeted_injection_stability = get_QC_pool_stabilities(df_untargeted_cornerFeatures, df_metadata)
+    else:
+        df_untargeted_injection_stability = pd.DataFrame({'no_qcs_in_dataset':[]})
     
+
+    df_targeted = create_filtered_table(args.json_path, type_ = 'standards')
+    if len(df_targeted) > 0:
+        date_time_mapping = df_targeted.groupby('mzml_file')['date_time'].first()
+        df_targeted['date_time'] = df_targeted['mzml_file'].map(date_time_mapping)
+        df_targeted.sort_values(by='date_time', inplace=True)
+        df_targeted['datetime_order'] = df_targeted['date_time'].rank(method='min').astype(int)
+        df_targeted.drop(['date_time'], axis=1, inplace=True)
+    else:
+        df_targeted = pd.DataFrame({'no_targets_in_dataset':[]})
+
+
+    df_ree = create_filtered_table(args.json_path, collection='ReEquilibration_inventory', include_keys='ReEquilibration_inventory')
+
+    
+    unique_date_times = sorted(df_ree['date_time'].unique())
+    date_time_rank_mapping = {date_time: rank+1 for rank, date_time in enumerate(unique_date_times)}
+    df_ree['datetime_order'] = df_ree['date_time'].map(date_time_rank_mapping)
+    df_ree.drop(['date_time', 'name', 'collection'], axis=1, inplace=True)
+
+
     engine = create_engine('sqlite:///aggregated_summary.db')
 
     df_untargeted_perMZML.to_sql('untargetedSummary', engine, if_exists='replace', index=False)
     df_targeted.to_sql('targetedSummary', engine, if_exists='replace', index=False)
     df_untargeted_injection_stability.to_sql('untargetedStability', engine, if_exists='replace', index=False)
+    df_ree.to_sql('reEquilibration', engine, if_exists='replace', index=False)
 
-
+    engine.dispose()
 

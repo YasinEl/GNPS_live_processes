@@ -34,7 +34,12 @@ def create_regex(df):
 
         results.append(pd.DataFrame({'set': [set_val], 'regex': [regex_pattern]}))
 
-    return pd.concat(results, ignore_index=True)
+    if len(results) > 0:
+        output_df = pd.concat(results, ignore_index=True)
+    else:
+        output_df = pd.DataFrame({'set': [], 'regex': []})
+
+    return output_df
 
 
 def prepare_parameter_file(file_path, mzml_path):
